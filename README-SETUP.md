@@ -1,50 +1,37 @@
 # Steal a Fish — Easy Setup
 
-No terminal. No commands. No GitHub. Three steps.
+No terminal. No commands. No GitHub. Two steps, then you're done forever.
 
 ## Step 1: Run the setup (double-click, do once)
 
 Double-click **`SETUP.bat`**. It installs Rojo, installs the Studio plugin,
-and checks the project builds. Takes about 30 seconds.
+links your folder to Tony's code, and turns on auto-update. Takes a minute or two.
 
-## Step 2: Get code updates from Tony (whenever he sends them)
+## Step 2: That's it. Seriously.
 
-Tony does all the code. When he has an update, he'll send you a download link:
+From now on the flow is:
 
-1. Download the zip.
-2. Extract it **into your `steal-a-fish-starter` folder** — let it replace the files.
-   (Only the code gets replaced. Your Studio place file is separate and safe.)
+1. **You text Tony** what you want changed or added.
+2. **New code appears** in `steal-a-fish\src` on its own within a few minutes.
+3. **To build:** double-click **`SERVE.bat`** (grabs the latest, starts syncing —
+   leave the black window open), open Studio, Plugins tab → **Rojo** → **Connect**.
 
-That's it. No accounts, no syncing tools, no learning curve.
-
-## Step 3: Connect Studio (every time you build)
-
-1. Double-click **`SERVE.bat`** → a black window opens. Leave it open.
-   (That's Rojo syncing your code. Close it when you're done building.)
-2. Open Roblox Studio → your Steal a Fish place.
-3. Plugins tab → **Rojo** button → **Connect**.
-
-Now the code in `steal-a-fish/src/` shows up in Studio live.
-**Edit code in a code editor (VS Code is free), never in Studio's script editor** —
-Studio edits get overwritten on the next sync. (Honestly, just let Tony handle code.)
+Your 3D world lives in your Studio place file — Tony's code never touches it.
+The code lives in these files — your world-building never touches it.
+They meet when you hit Connect.
 
 ## What's what
 
-- `SETUP.bat` — one-time setup. Run once.
-- `SERVE.bat` — start syncing. Run every build session.
-- `rojo/` — the Rojo tool itself (SETUP.bat installs it for you).
+- `SETUP.bat` — one-time setup. Run once. (Safe to run again if anything ever looks off.)
+- `SERVE.bat` — start building. Grabs latest code + starts Rojo.
+- `PULL.bat` — made by SETUP.bat. The auto-updater. You never touch this.
+- `rojo/` — the Rojo tool (SETUP.bat installs it for you).
 - `Rojo.rbxm` — the Studio plugin (SETUP.bat installs it for you).
-- `steal-a-fish/` — the actual game. All code lives under `src/`.
+- `steal-a-fish/` — the game code:
   - `src/shared/FishRegistry.lua` — **the fish list.** Baseline species + variants.
     Add a row = add a fish.
   - `src/shared/Config.lua` — all the tuning numbers in one place.
   - `src/server/` — game logic. `src/client/` — UI and input only.
-
-## The one rule
-
-Your **place file** (the 3D world — aquariums, river, decorations) is yours and
-lives in Studio. The **code** is Tony's and lives in these files. The zip only
-ever replaces code. They meet when you hit Connect.
 
 ## If something looks wrong
 
