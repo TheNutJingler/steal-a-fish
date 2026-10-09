@@ -1,16 +1,537 @@
 --!strict
 --[[
-	PlotService — owns aquarium plots: claiming, slot layout, fish placement.
-	One plot per player (Config.MaxPlots). Slots hold owned fish (species+variant).
-	Expose: ClaimPlot(player), GetPlot(player), PlaceFish(player, fishData, slot).
-	STATUS: stub — plot claiming + slot logic come with the world pass.
+	PlotService — owns aquarium plots: claiming, slot layout, fish placement,
+	base locks, and aquarium upgrades (vertical expansion).
+
+	Plots are server-owned. One per player. Slot indices:
+	  1-12 ground floor, 13-20 floor 2, 21-28 floor 3.
+	New fish always go to the highest-index free slot the owner's aquarium
+	level unlocks (back-most / top-most = hardest to steal).
+
+	Expose:
+	  Init(dataService, worldService)
+	  GetPlot(player) -> plot?
+	  GetPlotByIndex(i) -> plot?
+	  MaxSlotsFor(plot) -> number
+	  PlaceFish(player, speciesId, variantId) -> slotIndex?  (back-most free)
+	  TakeFishFromSlot(plot, slotIndex) -> fishData?
+	  ReturnFishToSlot(plot, fishData, preferSlot) -> slotIndex?
+	  IsLocked(plot) -> boolean
 ]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local server = ServerScriptService:WaitForChild("StealAFish")
+local Util = server:WaitForChild("Util")
+local FishVisual = require(Util:WaitForChild("FishVisual"))
+local RateLimit = require(Util:WaitForChild("RateLimit"))
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Remotes = Shared:WaitForChild("Remotes")
+
+local ClaimPlotRemote = Remotes:WaitForChild("ClaimPlot") :: RemoteEvent
+local RequestLockRemote = Remotes:WaitForChild("RequestLock") :: RemoteEvent
+local RequestUpgradeRemote = Remotes:WaitForChild("RequestUpgrade") :: RemoteEvent
+local PlotAssignedRemote = Remotes:WaitForChild("PlotAssigned") :: RemoteEvent
+local PlotOwnerChangedRemote = Remotes:WaitForChild("PlotOwnerChanged") :: RemoteEvent
+local PlotUpgradedRemote = Remotes:WaitForChild("PlotUpgraded") :: RemoteEvent
+local LockChangedRemote = Remotes:WaitForChild("LockChanged") :: RemoteEvent
+local StatsUpdateRemote = Remotes:WaitForChild("StatsUpdate") :: RemoteEvent
+
+type PlotRuntime = {
+	Layout: any, -- WorldService.PlotLayout
+	Owner: Player?,
+	Slots: { [number]: string? }, -- [slotIndex] = fishUid
+	FishModels: { [number]: Model? }, -- [slotIndex] = visual
+	LockUntil: number, -- os.clock() timestamp; 0 = unlocked
+	ClaimPrompt: ProximityPrompt,
+	LockPrompt: ProximityPrompt,
+	UpgradePrompt: ProximityPrompt,
+}
 
 local PlotService = {}
 
-function PlotService.Init(_dataService)
-	-- TODO: build/claim plots on join, restore owned fish from profile.
-	print("[PlotService] init (stub)")
+local DataService: any = nil
+local WorldService: any = nil
+
+local Plots: { [number]: PlotRuntime } = {}
+local claimLimiter = RateLimit.new(Config.RateLimit_ClaimPlot.Max, Config.RateLimit_ClaimPlot.Window)
+local lockLimiter = RateLimit.new(Config.RateLimit_Lock.Max, Config.RateLimit_Lock.Window)
+local upgradeLimiter = RateLimit.new(5, 30)
+
+local function totalSlots(): number
+	return Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
+end
+
+function PlotService.MaxSlotsFor(plot: PlotRuntime): number
+	local owner = plot.Owner
+	if not owner then
+		return Config.SlotsPerPlot
+	end
+	local profile = DataService.GetProfile(owner)
+	local level = if profile then profile.Data.AquariumLevel or 1 else 1
+	if level >= 3 then
+		return totalSlots()
+	elseif level >= 2 then
+		return Config.SlotsPerPlot + Config.Floor2Slots
+	else
+		return Config.SlotsPerPlot
+	end
+end
+
+function PlotService.GetPlot(player: Player): PlotRuntime?
+	for _, plot in Plots do
+		if plot.Owner == player then
+			return plot
+		end
+	end
+	return nil
+end
+
+function PlotService.GetPlotByIndex(index: number): PlotRuntime?
+	return Plots[index]
+end
+
+function PlotService.IsLocked(plot: PlotRuntime): boolean
+	return os.clock() < plot.LockUntil
+end
+
+local function makePrompt(parent: Instance, actionText: string, holdTime: number, maxDist: number): ProximityPrompt
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = actionText
+	prompt.HoldDuration = holdTime
+	prompt.MaxActivationDistance = maxDist
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = parent
+	return prompt
+end
+
+local function addStealPrompt(plotLayout: any, slotIndex: number)
+	local tank = plotLayout.Folder:WaitForChild(`Tank_{slotIndex}`)
+	local stealPrompt = makePrompt(tank, "Steal Fish", Config.StealChannelTime, Config.StealMaxDistance)
+	stealPrompt:SetAttribute("PlotIndex", plotLayout.Index)
+	stealPrompt:SetAttribute("SlotIndex", slotIndex)
+	stealPrompt.Name = "StealPrompt"
+end
+
+local function broadcastOwners()
+	for _, plot in Plots do
+		local ownerName: string? = if plot.Owner then plot.Owner.Name else nil
+		PlotOwnerChangedRemote:FireAllClients(plot.Layout.Index, ownerName)
+	end
+end
+
+local function refreshSign(plot: PlotRuntime)
+	if plot.Owner then
+		plot.Layout.SignLabel.Text = `{plot.Owner.DisplayName}'s\nAQUARIUM`
+	else
+		plot.Layout.SignLabel.Text = "UNCLAIMED"
+	end
+end
+
+-- Highest-index free slot at or below the owner's unlock ceiling.
+local function backMostFreeSlot(plot: PlotRuntime): number?
+	local max = PlotService.MaxSlotsFor(plot)
+	for i = max, 1, -1 do
+		if plot.Slots[i] == nil then
+			return i
+		end
+	end
+	return nil
+end
+
+local function placeVisual(plot: PlotRuntime, slotIndex: number, speciesId: string, variantId: string, uid: string)
+	PlotService.ClearVisual(plot, slotIndex)
+	local anchor = plot.Layout.SlotAnchors[slotIndex]
+	local model = FishVisual.Build(speciesId, variantId, 0.55, uid)
+	model:PivotTo(CFrame.new(anchor))
+	model.Parent = plot.Layout.Folder
+	plot.FishModels[slotIndex] = model
+end
+
+function PlotService.ClearVisual(plot: PlotRuntime, slotIndex: number)
+	local old = plot.FishModels[slotIndex]
+	if old then
+		old:Destroy()
+		plot.FishModels[slotIndex] = nil
+	end
+end
+
+-- Adds a fish to the player's profile AND places it in the back-most free slot.
+-- Returns the slot index, or nil if no free slot.
+function PlotService.PlaceFish(player: Player, speciesId: string, variantId: string): number?
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return nil
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return nil
+	end
+	local slot = backMostFreeSlot(plot)
+	if not slot then
+		return nil -- plot full
+	end
+	local uid = game:GetService("HttpService"):GenerateGUID(false)
+	table.insert(profile.Data.Fish, {
+		Uid = uid,
+		SpeciesId = speciesId,
+		VariantId = variantId,
+		Slot = slot,
+	})
+	plot.Slots[slot] = uid
+	placeVisual(plot, slot, speciesId, variantId, uid)
+	DataService.RegisterCodexEntry(player, speciesId, variantId)
+	return slot
+end
+
+-- Removes whatever fish is in a slot. Returns {Uid, SpeciesId, VariantId}.
+function PlotService.TakeFishFromSlot(plot: PlotRuntime, slotIndex: number): { [string]: any }?
+	local uid = plot.Slots[slotIndex]
+	if not uid then
+		return nil
+	end
+	local owner = plot.Owner
+	if not owner then
+		return nil
+	end
+	local profile = DataService.GetProfile(owner)
+	local taken: { [string]: any}? = nil
+	if profile then
+		for _, fish in profile.Data.Fish do
+			if fish.Uid == uid then
+				taken = {
+					Uid = fish.Uid,
+					SpeciesId = fish.SpeciesId,
+					VariantId = fish.VariantId,
+				}
+				fish.Slot = nil -- in transit; not in any slot
+				break
+			end
+		end
+	end
+	plot.Slots[slotIndex] = nil
+	PlotService.ClearVisual(plot, slotIndex)
+	return taken
+end
+
+-- Moves a fish entry from one player's profile to another's (steal banking).
+-- The entry lands with Slot=nil; call ReturnFishToSlot to place it.
+function PlotService.MoveFishToPlayer(
+	fishData: { [string]: any },
+	fromPlayer: Player,
+	toPlayer: Player
+): boolean
+	local fromProfile = DataService.GetProfile(fromPlayer)
+	local toProfile = DataService.GetProfile(toPlayer)
+	if not fromProfile or not toProfile then
+		return false
+	end
+	local removed = false
+	for i = #fromProfile.Data.Fish, 1, -1 do
+		if fromProfile.Data.Fish[i].Uid == fishData.Uid then
+			table.remove(fromProfile.Data.Fish, i)
+			removed = true
+			break
+		end
+	end
+	if not removed then
+		return false
+	end
+	table.insert(toProfile.Data.Fish, {
+		Uid = fishData.Uid,
+		SpeciesId = fishData.SpeciesId,
+		VariantId = fishData.VariantId,
+		Slot = nil,
+	})
+	return true
+end
+
+-- Puts a fish (from TakeFishFromSlot) back into a plot: preferred slot if free,
+-- else the back-most free slot. Returns the slot used, or nil if plot is full.
+function PlotService.ReturnFishToSlot(plot: PlotRuntime, fishData: { [string]: any }, preferSlot: number?): number?
+	local owner = plot.Owner
+	if not owner then
+		return nil
+	end
+	local profile = DataService.GetProfile(owner)
+	if not profile then
+		return nil
+	end
+	local max = PlotService.MaxSlotsFor(plot)
+	local slot: number? = nil
+	if preferSlot and preferSlot >= 1 and preferSlot <= max and plot.Slots[preferSlot] == nil then
+		slot = preferSlot
+	else
+		slot = backMostFreeSlot(plot)
+	end
+	if not slot then
+		return nil
+	end
+	-- Re-attach the profile entry.
+	for _, fish in profile.Data.Fish do
+		if fish.Uid == fishData.Uid then
+			fish.Slot = slot
+			break
+		end
+	end
+	plot.Slots[slot] = fishData.Uid
+	placeVisual(plot, slot, fishData.SpeciesId, fishData.VariantId, fishData.Uid)
+	return slot
+end
+
+function PlotService.ClaimPlot(player: Player, plotIndex: number): (boolean, string)
+	if typeof(plotIndex) ~= "number" or plotIndex ~= plotIndex then
+		return false, "Bad plot."
+	end
+	if not claimLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = Plots[math.floor(plotIndex)]
+	if not plot then
+		return false, "No such plot."
+	end
+	if plot.Owner then
+		return false, "Plot is taken."
+	end
+	if PlotService.GetPlot(player) then
+		return false, "You already have a plot."
+	end
+	plot.Owner = player
+	plot.LockUntil = 0
+	refreshSign(plot)
+	plot.Layout.SpawnLocation.Enabled = true
+	-- Respawn at the new plot.
+	task.defer(function()
+		if player:IsDescendantOf(Players) then
+			player:LoadCharacterAsync()
+		end
+	end)
+	PlotAssignedRemote:FireClient(player, plot.Layout.Index)
+	broadcastOwners()
+	print(`[PlotService] {player.Name} claimed plot {plot.Layout.Index}`)
+	return true, "Plot claimed!"
+end
+
+local function freePlot(player: Player)
+	for _, plot in Plots do
+		if plot.Owner == player then
+			plot.Owner = nil
+			plot.LockUntil = 0
+			plot.Layout.SpawnLocation.Enabled = false
+			-- Clear slot visuals (fish stay in the profile, slots cleared).
+			for slotIndex in plot.Slots do
+				plot.Slots[slotIndex] = nil
+				PlotService.ClearVisual(plot, slotIndex)
+			end
+			local profile = DataService.GetProfile(player)
+			if profile then
+				for _, fish in profile.Data.Fish do
+					fish.Slot = nil
+				end
+			end
+			refreshSign(plot)
+		end
+	end
+	broadcastOwners()
+end
+
+function PlotService.SetLock(player: Player): (boolean, string)
+	if not lockLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "You have no plot."
+	end
+	if PlotService.IsLocked(plot) then
+		return false, "Already locked."
+	end
+	plot.LockUntil = os.clock() + Config.BaseLockDuration
+	LockChangedRemote:FireAllClients(plot.Layout.Index, os.time() + Config.BaseLockDuration)
+	print(`[PlotService] {player.Name} locked plot {plot.Layout.Index}`)
+	return true, `Locked for {Config.BaseLockDuration}s!`
+end
+
+function PlotService.TryUpgrade(player: Player): (boolean, string)
+	if not upgradeLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "You have no plot."
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return false, "No data."
+	end
+	local level: number = profile.Data.AquariumLevel or 1
+	local next = nil
+	for _, row in Config.AquariumUpgrades do
+		if row.Level == level + 1 then
+			next = row
+			break
+		end
+	end
+	if not next then
+		return false, "Aquarium maxed out!"
+	end
+	if profile.Data.Coins < next.Cost then
+		return false, `Need ${next.Cost} coins.`
+	end
+	profile.Data.Coins -= next.Cost
+	profile.Data.AquariumLevel = next.Level
+	profile.Data.IncomeMultiplier = (profile.Data.IncomeMultiplier or 1) * next.IncomeMultiplier
+
+	WorldService.BuildUpperFloor(plot.Layout, next.FloorsUnlocked)
+
+	-- Steal prompts for the new floor's tanks.
+	local floorStart = if next.FloorsUnlocked == 2
+		then Config.SlotsPerPlot + 1
+		else Config.SlotsPerPlot + Config.Floor2Slots + 1
+	local floorEnd = if next.FloorsUnlocked == 2
+		then Config.SlotsPerPlot + Config.Floor2Slots
+		else Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
+	for slotIndex = floorStart, floorEnd do
+		addStealPrompt(plot.Layout, slotIndex)
+	end
+
+	PlotUpgradedRemote:FireAllClients(plot.Layout.Index, next.Level, next.DisplayName)
+	-- Push fresh stats so the HUD updates immediately.
+	local rate = DataService.GetBaseIncomePerSecond(profile)
+		* (profile.Data.IncomeMultiplier or 1)
+	StatsUpdateRemote:FireClient(player, math.floor(profile.Data.Coins), rate)
+	print(`[PlotService] {player.Name} upgraded to {next.DisplayName}`)
+	return true, `{next.DisplayName} unlocked! +{Config.Floor2Slots} slots.`
+end
+
+-- Restore a returning player's fish into their (freshly claimed) plot.
+local function restoreFish(player: Player, plot: PlotRuntime)
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return
+	end
+	local max = PlotService.MaxSlotsFor(plot)
+	-- Clear any stale slot refs (e.g. upgrades changed capacity).
+	for _, fish in profile.Data.Fish do
+		fish.Slot = nil
+	end
+	for slotIndex in plot.Slots do
+		plot.Slots[slotIndex] = nil
+		PlotService.ClearVisual(plot, slotIndex)
+	end
+	-- Re-place from the back.
+	for _, fish in profile.Data.Fish do
+		local slot = backMostFreeSlot(plot)
+		if not slot then
+			break
+		end
+		-- Only restore up to the unlock ceiling.
+		if slot > max then
+			break
+		end
+		fish.Slot = slot
+		plot.Slots[slot] = fish.Uid
+		placeVisual(plot, slot, fish.SpeciesId, fish.VariantId, fish.Uid)
+		DataService.RegisterCodexEntry(player, fish.SpeciesId, fish.VariantId)
+	end
+end
+
+function PlotService.Init(dataService: any, worldService: any, layout: any)
+	DataService = dataService
+	WorldService = worldService
+
+	for index, plotLayout in layout.Plots do
+		local runtime: PlotRuntime = {
+			Layout = plotLayout,
+			Owner = nil,
+			Slots = {},
+			FishModels = {},
+			LockUntil = 0,
+			ClaimPrompt = nil :: any,
+			LockPrompt = nil :: any,
+			UpgradePrompt = nil :: any,
+		}
+		-- Prompts live on the sign board.
+		local board = plotLayout.Folder:WaitForChild("SignBoard")
+		runtime.ClaimPrompt = makePrompt(board, "Claim Plot", 0.5, 14)
+		runtime.ClaimPrompt.Triggered:Connect(function(player: Player)
+			local ok, msg = PlotService.ClaimPlot(player, index)
+			if not ok then
+				warn(`[PlotService] claim rejected for {player.Name}: {msg}`)
+			end
+		end)
+		runtime.LockPrompt = makePrompt(board, `Lock Base ({Config.BaseLockDuration}s)`, 0, 14)
+		runtime.LockPrompt.Triggered:Connect(function(player: Player)
+			PlotService.SetLock(player)
+		end)
+		runtime.UpgradePrompt = makePrompt(board, "Upgrade Aquarium", 0, 14)
+		runtime.UpgradePrompt.Triggered:Connect(function(player: Player)
+			PlotService.TryUpgrade(player)
+		end)
+		-- Steal prompts on every ground-floor pedestal tank (client toggles visibility).
+		-- Upper floors get theirs in TryUpgrade when built.
+		for slotIndex = 1, Config.SlotsPerPlot do
+			addStealPrompt(plotLayout, slotIndex)
+		end
+		Plots[index] = runtime
+		refreshSign(runtime)
+	end
+
+	-- Remotes (also reachable via prompts; remotes let UI buttons use them).
+	ClaimPlotRemote.OnServerEvent:Connect(function(player: Player, plotIndex: unknown)
+		if typeof(plotIndex) == "number" then
+			PlotService.ClaimPlot(player, plotIndex)
+		end
+	end)
+	RequestLockRemote.OnServerEvent:Connect(function(player: Player)
+		PlotService.SetLock(player)
+	end)
+	RequestUpgradeRemote.OnServerEvent:Connect(function(player: Player)
+		PlotService.TryUpgrade(player)
+	end)
+
+	-- Auto-claim + restore on player ready.
+	DataService.PlayerReady:Connect(function(player: Player, profile: any, _grant: any)
+		-- Rebuild previously unlocked floors BEFORE restoring fish.
+		local level: number = profile.Data.AquariumLevel or 1
+		-- First free plot.
+		local plot: PlotRuntime? = nil
+		for _, p in Plots do
+			if p.Owner == nil then
+				plot = p
+				break
+			end
+		end
+		if not plot then
+			warn(`[PlotService] no free plot for {player.Name}`)
+			return
+		end
+		plot.Owner = player
+		refreshSign(plot)
+		plot.Layout.SpawnLocation.Enabled = true
+		if level >= 2 then
+			WorldService.BuildUpperFloor(plot.Layout, 2)
+		end
+		if level >= 3 then
+			WorldService.BuildUpperFloor(plot.Layout, 3)
+		end
+		restoreFish(player, plot)
+		PlotAssignedRemote:FireClient(player, plot.Layout.Index)
+		broadcastOwners()
+		task.defer(function()
+			if player:IsDescendantOf(Players) then
+				player:LoadCharacterAsync() -- spawn at plot
+			end
+		end)
+	end)
+
+	DataService.PlayerLeaving:Connect(freePlot)
+
+	print("[PlotService] init: 8 plots")
 end
 
 return PlotService
