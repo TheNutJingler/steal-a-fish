@@ -1,91 +1,47 @@
-# Steal a Fish — Setup Guide
+# Steal a Fish — Easy Setup
 
-Everything you need to go from zero to coding in Roblox Studio.
+No terminal. No commands. Three steps.
 
-## What's in this zip
+## Step 1: Run the setup (double-click)
 
-- `rojo/` — the Rojo command-line tool (Windows). This syncs code files into Studio.
-- `Rojo.rbxm` — the Rojo Studio plugin. This is the Studio side of the sync.
-- `steal-a-fish/` — the game project. All the code lives here.
-- `README-SETUP.md` — this file.
+Double-click **`SETUP.bat`**. It installs Rojo, installs the Studio plugin,
+and checks the project builds. Takes about 30 seconds.
 
-## Step 1: Install Rojo (the sync tool)
+## Step 2: Put it on GitHub (2 minutes, all clicking)
 
-1. Open the `rojo/` folder. You'll see `rojo.exe`.
-2. Easiest path: copy `rojo.exe` somewhere permanent, like `C:\Rojo\rojo.exe`.
-3. Add it to your PATH so you can run `rojo` from anywhere:
-   - Search Windows for "environment variables" → Environment Variables → Path → Edit → New → `C:\Rojo` → OK.
-   - Or skip this and just open a terminal inside the folder each time. Your call.
-4. Test it: open a terminal (Win+R → `cmd`) and run `rojo --version`. You should see `Rojo 7.7.0`.
+Tony can't create the repo on your account, so this one's yours:
 
-## Step 2: Install the Rojo plugin in Studio
+1. Go to **https://github.com/new** → name it `steal-a-fish` → Create repository.
+2. Install **GitHub Desktop**: https://desktop.github.com → open it and sign in.
+3. In GitHub Desktop: **File → Add Local Repository** → choose the `steal-a-fish`
+   folder from this zip → **Publish repository**.
 
-Pick ONE:
+Done. From now on, Tony's code comes through GitHub: open GitHub Desktop,
+hit **Fetch origin** whenever you want his latest.
 
-- **Easy:** with `rojo` on your PATH, run `rojo plugin install` in a terminal. Done.
-- **Manual:** in Studio, go to the Plugins tab → click "Plugins Folder" → copy `Rojo.rbxm` into that folder → restart Studio.
-- **Marketplace:** install "Rojo 7" from the Roblox plugin marketplace (search "Rojo").
+## Step 3: Connect Studio (every time you build)
 
-## Step 3: GitHub (so Tony's code reaches you)
+1. Double-click **`SERVE.bat`** → a black window opens. Leave it open.
+   (That's Rojo syncing your code. Close it when you're done building.)
+2. Open Roblox Studio → your Steal a Fish place.
+3. Plugins tab → **Rojo** button → **Connect**.
 
-Tony can't create the repo on your account — this part's yours, two minutes:
+Now edit any file in `steal-a-fish/src/` — it appears in Studio instantly.
+**Edit code in a code editor (VS Code is free), never in Studio's script editor** —
+Studio edits get overwritten on the next sync.
 
-1. Go to https://github.com/new → name it `steal-a-fish` → Create repository (keep it private).
-2. In a terminal inside the `steal-a-fish/` folder, run:
-   ```
-   git init
-   git add .
-   git commit -m "initial scaffold"
-   git branch -M main
-   git remote add origin https://github.com/YOUR-USERNAME/steal-a-fish.git
-   git push -u origin main
-   ```
-   (Replace YOUR-USERNAME with your GitHub username.)
-3. From now on: Tony writes code → pushes to this repo → you `git pull` → the new code is on your machine.
+## What's what
 
-Don't want the terminal? Install **GitHub Desktop** (https://desktop.github.com) — same thing with buttons.
+- `SETUP.bat` — one-time setup. Run once.
+- `SERVE.bat` — start syncing. Run every build session.
+- `rojo/` — the Rojo tool itself (SETUP.bat installs it for you).
+- `Rojo.rbxm` — the Studio plugin (SETUP.bat installs it for you).
+- `steal-a-fish/` — the actual game. All code lives under `src/`.
+  - `src/shared/FishRegistry.lua` — **the fish list.** Baseline species + variants.
+    Add a row = add a fish. This is where your "more fish, more variants" idea lives.
+  - `src/shared/Config.lua` — all the tuning numbers in one place.
+  - `src/server/` — game logic. `src/client/` — UI and input only.
 
-## Step 4: Connect it all and see it work
+## If something looks wrong
 
-1. Open Roblox Studio → new Baseplate (or your Steal a Fish place).
-2. In a terminal inside `steal-a-fish/`, run: `rojo serve`
-   - Leave that terminal running. That's the sync server.
-3. In Studio: Plugins tab → click the **Rojo** button → **Connect**.
-   - It connects to `localhost:34872` by default. Leave it.
-4. Watch the magic: open `steal-a-fish/src/shared/FishRegistry.lua`, change a fish name, save — it appears in Studio instantly.
-
-## The daily workflow
-
-1. `git pull` — grab Tony's latest code.
-2. `rojo serve` — start syncing.
-3. Build/test in Studio. Play-test with the Play button.
-4. Commit + push anything you change.
-
-## Project layout
-
-```
-steal-a-fish/
-├── default.project.json      ← Rojo's map: which folders go where in Studio
-└── src/
-    ├── server/               ← ServerScriptService: game logic (never trust the client)
-    │   ├── Main.server.lua   ← boots everything
-    │   └── Services/         ← DataService, PlotService, FishSpawnerService, StealService
-    ├── shared/               ← ReplicatedStorage: both sides can read
-    │   ├── FishRegistry.lua  ← THE fish list: baseline species + variants. Add rows = add fish.
-    │   └── Config.lua        ← all tuning numbers in one place
-    └── client/               ← StarterPlayerScripts: UI + input only, no game state
-        └── Main.client.lua
-```
-
-## The fish system (your design)
-
-Every fish = **baseline species** + **variant**. Baseline is the fish (Bluegill, Bass…),
-variant is the modifier (Normal, Golden, Diamond…) that multiplies income.
-To add a fish: add one row to `SPECIES` in FishRegistry.lua.
-To add a variant: add one row to `VARIANTS`. The spawner, shop, and codex all read from here.
-
-## Rules of the road
-
-- **Code lives in files, not in Studio.** Edit in VS Code (or any editor), never in Studio's script editor — Studio edits get overwritten on next sync.
-- **Server owns everything.** If the client says "I stole that fish," the server re-checks. Always.
-- **Commit early, commit often.** GitHub is the bridge between you and Tony.
+Tell Tony exactly what you see — copy the text from the black window if there is one.
