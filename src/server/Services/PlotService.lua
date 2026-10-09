@@ -4,7 +4,7 @@
 	base locks, and aquarium upgrades (vertical expansion).
 
 	Plots are server-owned. One per player. Slot indices:
-	  1-12 ground floor, 13-20 floor 2, 21-28 floor 3.
+	  1-12 ground floor, 13-20 floor 2, 21-28 floor 3, 29-40 land expansion.
 	New fish always go to the highest-index free slot the owner's aquarium
 	level unlocks (back-most / top-most = hardest to steal).
 
@@ -35,9 +35,11 @@ local Remotes = Shared:WaitForChild("Remotes")
 local ClaimPlotRemote = Remotes:WaitForChild("ClaimPlot") :: RemoteEvent
 local RequestLockRemote = Remotes:WaitForChild("RequestLock") :: RemoteEvent
 local RequestUpgradeRemote = Remotes:WaitForChild("RequestUpgrade") :: RemoteEvent
+local RequestExpandRemote = Remotes:WaitForChild("RequestExpand") :: RemoteEvent
 local PlotAssignedRemote = Remotes:WaitForChild("PlotAssigned") :: RemoteEvent
 local PlotOwnerChangedRemote = Remotes:WaitForChild("PlotOwnerChanged") :: RemoteEvent
 local PlotUpgradedRemote = Remotes:WaitForChild("PlotUpgraded") :: RemoteEvent
+local PlotExpandedRemote = Remotes:WaitForChild("PlotExpanded") :: RemoteEvent
 local LockChangedRemote = Remotes:WaitForChild("LockChanged") :: RemoteEvent
 local StatsUpdateRemote = Remotes:WaitForChild("StatsUpdate") :: RemoteEvent
 
@@ -64,6 +66,7 @@ local upgradeLimiter = RateLimit.new(5, 30)
 
 local function totalSlots(): number
 	return Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
+		+ Config.MaxExpansionTier * Config.ExpansionSlotsPerTier
 end
 
 function PlotService.MaxSlotsFor(plot: PlotRuntime): number
@@ -73,13 +76,16 @@ function PlotService.MaxSlotsFor(plot: PlotRuntime): number
 	end
 	local profile = DataService.GetProfile(owner)
 	local level = if profile then profile.Data.AquariumLevel or 1 else 1
-	if level >= 3 then
-		return totalSlots()
-	elseif level >= 2 then
-		return Config.SlotsPerPlot + Config.Floor2Slots
-	else
-		return Config.SlotsPerPlot
+	local expansion = if profile then profile.Data.ExpansionTier or 0 else 0
+	local max = Config.SlotsPerPlot
+	if level >= 2 then
+		max += Config.Floor2Slots
 	end
+	if level >= 3 then
+		max += Config.Floor3Slots
+	end
+	max += expansion * Config.ExpansionSlotsPerTier
+	return max
 end
 
 function PlotService.GetPlot(player: Player): PlotRuntime?
@@ -112,6 +118,9 @@ end
 
 local function addStealPrompt(plotLayout: any, slotIndex: number)
 	local tank = plotLayout.Folder:WaitForChild(`Tank_{slotIndex}`)
+	if tank:FindFirstChild("StealPrompt") then
+		return -- already has one (rejoin rebuilds, re-claims)
+	end
 	local stealPrompt = makePrompt("Steal Fish", Config.StealChannelTime, Config.StealMaxDistance)
 	stealPrompt:SetAttribute("PlotIndex", plotLayout.Index)
 	stealPrompt:SetAttribute("SlotIndex", slotIndex)
@@ -413,6 +422,54 @@ function PlotService.TryUpgrade(player: Player): (boolean, string)
 	return true, `{next.DisplayName} unlocked! +{Config.Floor2Slots} slots.`
 end
 
+-- Land expansion purchase: pushes the lot fences out and plants 4 new
+-- tank slots in the claimed ring. Tycoon-style plot growth.
+function PlotService.TryExpand(player: Player): (boolean, string)
+	if not upgradeLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "You have no plot."
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return false, "No data."
+	end
+	local tier: number = profile.Data.ExpansionTier or 0
+	local next = nil
+	for _, row in Config.LandExpansions do
+		if row.Tier == tier + 1 then
+			next = row
+			break
+		end
+	end
+	if not next then
+		return false, "Land fully expanded!"
+	end
+	if profile.Data.Coins < next.Cost then
+		return false, `Need ${next.Cost} coins.`
+	end
+	profile.Data.Coins -= next.Cost
+	profile.Data.ExpansionTier = next.Tier
+
+	WorldService.BuildExpansion(plot.Layout, next.Tier, next.LotSize)
+
+	-- Steal prompts for the new ring's tanks.
+	local baseSlots = Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
+	local startSlot = baseSlots + (next.Tier - 1) * Config.ExpansionSlotsPerTier + 1
+	for slotIndex = startSlot, startSlot + Config.ExpansionSlotsPerTier - 1 do
+		addStealPrompt(plot.Layout, slotIndex)
+	end
+
+	PlotExpandedRemote:FireAllClients(plot.Layout.Index, next.Tier, next.DisplayName)
+	local rate = DataService.GetBaseIncomePerSecond(profile)
+		* (profile.Data.IncomeMultiplier or 1)
+	StatsUpdateRemote:FireClient(player, math.floor(profile.Data.Coins), rate)
+	print(`[PlotService] {player.Name} expanded land to {next.DisplayName}`)
+	return true, `{next.DisplayName} claimed! +{Config.ExpansionSlotsPerTier} land slots.`
+end
+
 -- Restore a returning player's fish into their (freshly claimed) plot.
 local function restoreFish(player: Player, plot: PlotRuntime)
 	local profile = DataService.GetProfile(player)
@@ -459,6 +516,7 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 			ClaimPrompt = nil :: any,
 			LockPrompt = nil :: any,
 			UpgradePrompt = nil :: any,
+			ExpandPrompt = nil :: any,
 		}
 		-- Prompts live on the sign board (parented last).
 		local board = plotLayout.Folder:WaitForChild("SignBoard")
@@ -480,6 +538,11 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		runtime.UpgradePrompt.Triggered:Connect(function(player: Player)
 			PlotService.TryUpgrade(player)
 		end)
+		runtime.ExpandPrompt = makePrompt("Expand Land", 0, 14)
+		runtime.ExpandPrompt.Parent = board
+		runtime.ExpandPrompt.Triggered:Connect(function(player: Player)
+			PlotService.TryExpand(player)
+		end)
 		-- Steal prompts on every ground-floor pedestal tank (client toggles visibility).
 		-- Upper floors get theirs in TryUpgrade when built.
 		for slotIndex = 1, Config.SlotsPerPlot do
@@ -500,6 +563,9 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 	end)
 	RequestUpgradeRemote.OnServerEvent:Connect(function(player: Player)
 		PlotService.TryUpgrade(player)
+	end)
+	RequestExpandRemote.OnServerEvent:Connect(function(player: Player)
+		PlotService.TryExpand(player)
 	end)
 
 	-- Auto-claim + restore on player ready.
@@ -526,6 +592,17 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		end
 		if level >= 3 then
 			WorldService.BuildUpperFloor(plot.Layout, 3)
+		end
+		-- Rebuild previously purchased land expansions.
+		local expansion: number = profile.Data.ExpansionTier or 0
+		for _, row in Config.LandExpansions do
+			if row.Tier <= expansion then
+				WorldService.BuildExpansion(plot.Layout, row.Tier, row.LotSize)
+			end
+		end
+		-- (Re)attach steal prompts for every unlocked non-ground slot.
+		for slotIndex = Config.SlotsPerPlot + 1, PlotService.MaxSlotsFor(plot) do
+			addStealPrompt(plot.Layout, slotIndex)
 		end
 		restoreFish(player, plot)
 		PlotAssignedRemote:FireClient(player, plot.Layout.Index)

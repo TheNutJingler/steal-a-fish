@@ -4,17 +4,20 @@
 	All geometry is procedural so the map lives in git, not in a binary place.
 
 	Layout (studs, Y-up, river runs north→south along X=0):
-	- Rock barrier ring at radius ~275 (20 segments) + invisible collision walls.
-	- Pond built into the north rocks at (0, -230), waterfall feeding the river.
-	- Central river: 30 wide, z=-200 to z=+215, bed+water recessed below grade
+	- Rock barrier ring at radius ~690 (20 segments) + invisible collision walls.
+	- Pond built into the north rocks at (0, -640), waterfall pouring into it,
+	  pond feeding the river at its south lip.
+	- Central river: 30 wide, z=-610 to z=+560, bed+water recessed below grade
 	  in a real channel cut through the ground (grass can't phase through it).
 	- Sand banks run the FULL river length on both sides.
-	- 8 plots (4 per bank) at x=±95, z in {-157,-52,52,157}. Each plot owns a
-	  76x76 fenced lot with the 44x44 platform in the middle: room to expand
-	  on every side. Ground floor built here; upper floors via BuildUpperFloor.
-	- AFK cove: sandy disc south-east at (170, 195). Neutral spawn pad at (0, 248).
-	- At Init, WORLD_Y is detected from the builder's own baseplate/terrain
-	  and the whole world is lifted to sit on it (never buried).
+	- 8 plots (4 per bank) at x=±200, z in {-420,-140,140,420}. Each plot owns
+	  a 150x150 fenced lot with a clean 60x60 platform in the middle (tidy 3x4
+	  tank grid, center walkway, fountain centerpiece) and room to expand.
+	  Upper aquarium floors via BuildUpperFloor; land-expansion tiers via
+	  BuildExpansion (+4 grass slots per tier, fences pushed out).
+	- AFK cove: sandy disc south-east at (450, 470). Neutral spawn pad at (0, 625).
+	- At Init, the builder's ORIGINAL ground is removed (our world IS the map),
+	  so no OG grass can ever show through or fill the river channel.
 
 	Exposes:
 	  WorldService.Init() -> Layout
@@ -36,15 +39,15 @@ local WorldService = {}
 local WORLD_Y: number = 0
 
 -- World layout constants (studs, pre-WORLD_Y lift).
-local GROUND_HALF = 280 -- ground extends ±280 in X and Z
+local GROUND_HALF = 700 -- ground extends ±700 in X and Z (1400x1400 map)
 local RIVER_HALF_W = 15 -- water half-width; channel cut through the ground
-local RIVER_Z0 = -200 -- river north end (tucks under the pond's south lip)
-local RIVER_Z1 = 215 -- river south end
+local RIVER_Z0 = -610 -- river north end (tucks under the pond's south lip)
+local RIVER_Z1 = 560 -- river south end
 local BANK_W = 12 -- sand bank width on each river side
-local PLOT_X = 95 -- plot center distance from the middle
-local PLOT_LOT = 76 -- fenced lot size: room for the base to expand
-local PLOT_PLATFORM = 44 -- built platform size
-local PLOT_ZS = { -157, -52, 52, 157 }
+local PLOT_X = 200 -- plot center distance from the middle
+local PLOT_LOT = 150 -- base fenced lot size; expansions grow it per Config
+local PLOT_PLATFORM = 60 -- ground platform size (clean 3x4 tank grid)
+local PLOT_ZS = { -420, -140, 140, 420 }
 
 export type PlotLayout = {
 	Index: number,
@@ -57,6 +60,8 @@ export type PlotLayout = {
 	FloorTopY: { [number]: number }, -- [floorNum] -> platform top Y
 	UpperBuilt: { [number]: boolean },
 	RiverDirX: number, -- -1 for east plots (river is -X), +1 for west plots
+	LotSize: number, -- current fenced lot size (grows with land expansion)
+	Bank: string,
 }
 
 export type Layout = {
@@ -114,7 +119,7 @@ local function buildRockBarrier(world: Folder)
 	local rockColor = Color3.fromRGB(112, 102, 96)
 	local rockDark = Color3.fromRGB(88, 80, 76)
 	local segments = 20
-	local radius = 278
+	local radius = 690
 
 	for i = 0, segments - 1 do
 		local angle = (i / segments) * math.pi * 2
@@ -122,7 +127,7 @@ local function buildRockBarrier(world: Folder)
 		local z = math.sin(angle) * radius
 		-- Deterministic pseudo-variation so the ring doesn't look stamped.
 		local h = 52 + ((i * 37) % 17)
-		local w = 86 + ((i * 53) % 13)
+		local w = 200 + ((i * 53) % 13)
 
 		local seg = mkPart(
 			folder,
@@ -151,7 +156,7 @@ local function buildRockBarrier(world: Folder)
 	local wallFolder = Instance.new("Folder")
 	wallFolder.Name = "InvisibleWalls"
 	wallFolder.Parent = world
-	local ext = 258
+	local ext = 660
 	local wallH = 70
 	mkPart(wallFolder, "WallN", Vector3.new(ext * 2 + 4, wallH, 2),
 		CFrame.new(0, wallH / 2, -ext), Color3.new(1, 1, 1), Enum.Material.SmoothPlastic, true)
@@ -173,7 +178,7 @@ local function buildPondAndWaterfall(world: Folder)
 	folder.Name = "Pond"
 	folder.Parent = world
 
-	local pondCenter = Vector3.new(0, 0, -230)
+	local pondCenter = Vector3.new(0, 0, -640)
 
 	-- Sand bed under the pond (cylinder axis is X; rotate to lie flat).
 	local bed = Instance.new("Part")
@@ -208,19 +213,19 @@ local function buildPondAndWaterfall(world: Folder)
 	water.BottomSurface = Enum.SurfaceType.Smooth
 	water.Parent = folder
 
-	-- Cliff the waterfall pours over (north edge, against the rocks).
+	-- Cliff the waterfall pours over (north edge, tucked into the rocks).
 	mkPart(folder, "FallCliff", Vector3.new(46, 34, 12),
-		CFrame.new(0, 17, -262), Color3.fromRGB(105, 98, 92), Enum.Material.Rock, true)
+		CFrame.new(0, 17, -676), Color3.fromRGB(105, 98, 92), Enum.Material.Rock, true)
 
-	-- The falls: white-blue sheet.
-	local falls = mkPart(folder, "Waterfall", Vector3.new(14, 30, 1.6),
-		CFrame.new(0, 15, -255), Color3.fromRGB(200, 235, 255), Enum.Material.Water, false)
+	-- The falls: white-blue sheet pouring INTO the pond (bottom submerged).
+	local falls = mkPart(folder, "Waterfall", Vector3.new(14, 34, 1.6),
+		CFrame.new(0, 14, -669), Color3.fromRGB(200, 235, 255), Enum.Material.Water, false)
 	falls.Transparency = 0.25
 
-	-- Foam chunks at the base.
+	-- Foam chunks where the falls land.
 	for i = -1, 1 do
 		local foam = mkPart(folder, `Foam_{i}`, Vector3.new(5, 1.5, 5),
-			CFrame.new(i * 6, 0.8, -246), Color3.fromRGB(240, 250, 255),
+			CFrame.new(i * 6, 0.8, -660), Color3.fromRGB(240, 250, 255),
 			Enum.Material.SmoothPlastic, false)
 		foam.Transparency = 0.3
 	end
@@ -274,31 +279,43 @@ local function buildRiver(world: Folder): { Vector3 }
 end
 
 -- Slot anchor math (shared by pedestal building + logic).
--- slotIndex: 1-12 ground, 13-20 floor 2, 21-28 floor 3.
+-- slotIndex: 1-12 ground (clean 3x4 grid, center walkway), 13-20 floor 2,
+-- 21-28 floor 3, 29-40 land-expansion tiers (4 slots each, on the grass).
 local function slotLocal(slotIndex: number): (number, number, number)
-	-- returns (floorNum, u [away from river], v [along river])
+	-- returns (floorNum, u [studs from river edge of platform], v [along river])
+	-- floorNum 11/12/13 = expansion tiers 1/2/3 (tanks sit on grass, not platform)
 	if slotIndex <= Config.SlotsPerPlot then
 		local t = math.floor((slotIndex - 1) / 4) -- row 0..2
 		local p = (slotIndex - 1) % 4 -- col 0..3
-		return 1, 8 + t * 12, -16.5 + p * 11
+		return 1, 14 + t * 16, -19.5 + p * 13
 	elseif slotIndex <= Config.SlotsPerPlot + Config.Floor2Slots then
 		local i = slotIndex - Config.SlotsPerPlot - 1
 		local t = math.floor(i / 4)
 		local p = i % 4
-		return 2, 10 + t * 14, -16.5 + p * 11
-	else
+		return 2, 15 + t * 30, -19.5 + p * 13
+	elseif slotIndex <= Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots then
 		local i = slotIndex - Config.SlotsPerPlot - Config.Floor2Slots - 1
 		local t = math.floor(i / 4)
 		local p = i % 4
-		return 3, 10 + t * 14, -16.5 + p * 11
+		return 3, 15 + t * 30, -19.5 + p * 13
+	else
+		local k = math.floor((slotIndex - 29) / Config.ExpansionSlotsPerTier) + 1 -- tier 1..3
+		local p = (slotIndex - 29) % Config.ExpansionSlotsPerTier -- col 0..3
+		-- Row in the middle of the newly claimed ring, along the back edge.
+		return 10 + k, 90 + (k - 1) * 30, -19.5 + p * 13
 	end
 end
 
 local function slotWorld(plotCenter: Vector3, riverDirX: number, floorTopY: { [number]: number }, slotIndex: number): Vector3
 	local floorNum, u, v = slotLocal(slotIndex)
-	-- East plots (center +44): river is -X, so u extends +X. West: mirrored.
-	local x = plotCenter.X + riverDirX * -1 * (u - 22) -- u measured from river edge (plot edge at 22 from center)
-	local y = floorTopY[floorNum] + 3.2 -- pedestal top
+	-- u measured from the river edge of the ground platform.
+	local x = plotCenter.X + riverDirX * -1 * (u - PLOT_PLATFORM / 2)
+	local y: number
+	if floorNum >= 11 then
+		y = WORLD_Y + 3.2 -- expansion tanks sit on grass, not on the platform
+	else
+		y = floorTopY[floorNum] + 3.2 -- pedestal top
+	end
 	return Vector3.new(x, y, plotCenter.Z + v)
 end
 
@@ -310,6 +327,33 @@ local function buildStairs(parent: Instance, base: Vector3, dirV: number, width:
 			CFrame.new(base.X, base.Y + (s - 0.5) * (rise / steps), base.Z + dirV * (s - 0.5) * runPer),
 			Color3.fromRGB(150, 140, 130), Enum.Material.WoodPlanks, true)
 	end
+end
+
+-- Fences at the lot boundary. River side stays open as the entrance.
+-- Called at build time and again on every land-expansion purchase.
+local function buildFences(folder: Folder, centerX: number, centerZ: number, bank: string, lotSize: number)
+	-- Clear any previous fences (expansion rebuilds).
+	for _, name in { "FenceN", "FenceS", "FenceBackA", "FenceBackB" } do
+		local old = folder:FindFirstChild(name)
+		if old then
+			old:Destroy()
+		end
+	end
+	local fenceColor = Color3.fromRGB(140, 105, 72)
+	local halfLot = lotSize / 2
+	-- North / south fences (along X at z edges). Sit on grass (y 0..4).
+	mkPart(folder, "FenceN", Vector3.new(lotSize, 4, 1),
+		CFrame.new(centerX, 2, centerZ - halfLot + 0.5), fenceColor, Enum.Material.WoodPlanks, true)
+	mkPart(folder, "FenceS", Vector3.new(lotSize, 4, 1),
+		CFrame.new(centerX, 2, centerZ + halfLot - 0.5), fenceColor, Enum.Material.WoodPlanks, true)
+	-- Back fence (away from river) with an 8-stud gap in the middle = land approach.
+	local backX = centerX + (if bank == "East" then halfLot - 0.5 else -(halfLot - 0.5))
+	local backSegLen = (lotSize - 8) / 2
+	local backSegOff = 4 + backSegLen / 2
+	mkPart(folder, "FenceBackA", Vector3.new(1, 4, backSegLen),
+		CFrame.new(backX, 2, centerZ - backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
+	mkPart(folder, "FenceBackB", Vector3.new(1, 4, backSegLen),
+		CFrame.new(backX, 2, centerZ + backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
 end
 
 local function buildPlot(world: Folder, index: number, centerX: number, centerZ: number, bank: string): PlotLayout
@@ -327,24 +371,19 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	mkPart(folder, "Trim", Vector3.new(PLOT_PLATFORM + 2, 1, PLOT_PLATFORM + 2),
 		CFrame.new(centerX, 0.5, centerZ), Color3.fromRGB(120, 120, 135), Enum.Material.SmoothPlastic, true)
 
-	-- Fences at the LOT boundary (76x76): the 44x44 platform sits in the
-	-- middle with room to expand on every side. River side stays open
-	-- as the entrance; fences sit on grass (y 0..4).
-	local fenceColor = Color3.fromRGB(140, 105, 72)
-	local halfLot = PLOT_LOT / 2
-	-- North / south fences (along X at z edges).
-	mkPart(folder, "FenceN", Vector3.new(PLOT_LOT, 4, 1),
-		CFrame.new(centerX, 2, centerZ - halfLot + 0.5), fenceColor, Enum.Material.WoodPlanks, true)
-	mkPart(folder, "FenceS", Vector3.new(PLOT_LOT, 4, 1),
-		CFrame.new(centerX, 2, centerZ + halfLot - 0.5), fenceColor, Enum.Material.WoodPlanks, true)
-	-- Back fence (away from river) with an 8-stud gap in the middle = land approach.
-	local backX = centerX + (if bank == "East" then halfLot - 0.5 else -(halfLot - 0.5))
-	local backSegLen = (PLOT_LOT - 8) / 2
-	local backSegOff = 4 + backSegLen / 2
-	mkPart(folder, "FenceBackA", Vector3.new(1, 4, backSegLen),
-		CFrame.new(backX, 2, centerZ - backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
-	mkPart(folder, "FenceBackB", Vector3.new(1, 4, backSegLen),
-		CFrame.new(backX, 2, centerZ + backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
+	-- Centerpiece fountain: the platform's clean focal point (decorative).
+	local fountainBase = mkPart(folder, "FountainBase", Vector3.new(2, 10, 10),
+		CFrame.new(centerX, 3, centerZ), Color3.fromRGB(130, 140, 155), Enum.Material.Marble, true)
+	fountainBase.Shape = Enum.PartType.Cylinder
+	fountainBase.CFrame = CFrame.new(centerX, 3, centerZ) * CFrame.Angles(0, 0, math.pi / 2)
+	local fountainTop = mkPart(folder, "FountainTop", Vector3.new(1, 6, 6),
+		CFrame.new(centerX, 4.5, centerZ), Color3.fromRGB(200, 235, 255), Enum.Material.Water, false)
+	fountainTop.Shape = Enum.PartType.Cylinder
+	fountainTop.CFrame = CFrame.new(centerX, 4.5, centerZ) * CFrame.Angles(0, 0, math.pi / 2)
+	fountainTop.Transparency = 0.3
+
+	-- Fences at the lot boundary: platform in the middle, room to expand.
+	buildFences(folder, centerX, centerZ, bank, PLOT_LOT)
 
 	-- Sign post + board at the river-side corner.
 	local signX = centerX + (if bank == "East" then -19 else 19)
@@ -392,6 +431,7 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	-- Slot anchors for all 28 slots (upper floors' anchors valid once built).
 	local anchors: { [number]: Vector3 } = {}
 	local totalSlots = Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
+		+ Config.MaxExpansionTier * Config.ExpansionSlotsPerTier
 	for i = 1, totalSlots do
 		anchors[i] = slotWorld(Vector3.new(centerX, 0, centerZ), riverDirX, floorTopY, i)
 	end
@@ -412,6 +452,7 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 		FloorTopY = floorTopY,
 		UpperBuilt = { [2] = false, [3] = false },
 		RiverDirX = riverDirX,
+		LotSize = PLOT_LOT,
 	}
 end
 
@@ -479,8 +520,8 @@ function WorldService.BuildUpperFloor(plot: PlotLayout, floorNum: number)
 	local topY = plot.FloorTopY[floorNum] -- 14 or 26
 	local baseColor = Color3.fromRGB(168, 168, 182)
 
-	-- Platform.
-	mkPart(folder, `Platform_F{floorNum}`, Vector3.new(44, 2, 44),
+	-- Platform (same 60x60 footprint as the ground floor).
+	mkPart(folder, `Platform_F{floorNum}`, Vector3.new(PLOT_PLATFORM, 2, PLOT_PLATFORM),
 		CFrame.new(cx, topY - 1, cz), baseColor, Enum.Material.SmoothPlastic, true)
 
 	-- Corner pillars down to the floor below.
@@ -489,22 +530,23 @@ function WorldService.BuildUpperFloor(plot: PlotLayout, floorNum: number)
 	for _, sx in { -1, 1 } do
 		for _, sz in { -1, 1 } do
 			mkPart(folder, `Pillar_F{floorNum}_{sx}_{sz}`, Vector3.new(2, pillarH, 2),
-				CFrame.new(cx + sx * 20, belowTop + pillarH / 2, cz + sz * 20),
+				CFrame.new(cx + sx * 28, belowTop + pillarH / 2, cz + sz * 28),
 				Color3.fromRGB(120, 120, 135), Enum.Material.SmoothPlastic, true)
 		end
 	end
 
 	-- Railings (3 tall) on all sides except the stair opening (back edge).
 	local railColor = Color3.fromRGB(140, 105, 72)
-	mkPart(folder, `RailN_F{floorNum}`, Vector3.new(44, 3, 1),
-		CFrame.new(cx, topY + 1.5, cz - 21.5), railColor, Enum.Material.WoodPlanks, true)
-	mkPart(folder, `RailS_F{floorNum}`, Vector3.new(44, 3, 1),
-		CFrame.new(cx, topY + 1.5, cz + 21.5), railColor, Enum.Material.WoodPlanks, true)
-	local riverX = cx + plot.RiverDirX * 21.5
-	mkPart(folder, `RailRiver_F{floorNum}`, Vector3.new(1, 3, 44),
+	local halfPlat = PLOT_PLATFORM / 2
+	mkPart(folder, `RailN_F{floorNum}`, Vector3.new(PLOT_PLATFORM, 3, 1),
+		CFrame.new(cx, topY + 1.5, cz - halfPlat + 0.5), railColor, Enum.Material.WoodPlanks, true)
+	mkPart(folder, `RailS_F{floorNum}`, Vector3.new(PLOT_PLATFORM, 3, 1),
+		CFrame.new(cx, topY + 1.5, cz + halfPlat - 0.5), railColor, Enum.Material.WoodPlanks, true)
+	local riverX = cx + plot.RiverDirX * (halfPlat - 0.5)
+	mkPart(folder, `RailRiver_F{floorNum}`, Vector3.new(1, 3, PLOT_PLATFORM),
 		CFrame.new(riverX, topY + 1.5, cz), railColor, Enum.Material.WoodPlanks, true)
 	-- Back railing split for the stair opening (8-stud gap in the middle).
-	local backX = cx - plot.RiverDirX * 21.5
+	local backX = cx - plot.RiverDirX * (halfPlat - 0.5)
 	mkPart(folder, `RailBackA_F{floorNum}`, Vector3.new(1, 3, 18),
 		CFrame.new(backX, topY + 1.5, cz - 13), railColor, Enum.Material.WoodPlanks, true)
 	mkPart(folder, `RailBackB_F{floorNum}`, Vector3.new(1, 3, 18),
@@ -529,13 +571,28 @@ function WorldService.BuildUpperFloor(plot: PlotLayout, floorNum: number)
 	print(`[WorldService] Plot {plot.Index} floor {floorNum} built`)
 end
 
+-- Land expansion: push the fences out to the new lot size and plant the
+-- tier's 4 new tank pedestals in the newly claimed ring (on the grass).
+-- Called by PlotService.TryExpand after the purchase is validated.
+function WorldService.BuildExpansion(plot: PlotLayout, tier: number, lotSize: number)
+	plot.LotSize = lotSize
+	buildFences(plot.Folder, plot.Center.X, plot.Center.Z, plot.Bank, lotSize)
+	local baseSlots = Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
+	local startSlot = baseSlots + (tier - 1) * Config.ExpansionSlotsPerTier + 1
+	local endSlot = startSlot + Config.ExpansionSlotsPerTier - 1
+	for i = startSlot, endSlot do
+		WorldService._buildPedestal(plot.Folder, plot.SlotAnchors[i], i)
+	end
+	print(`[WorldService] Plot {plot.Index} expanded to tier {tier} (lot {lotSize})`)
+end
+
 local function buildCove(world: Folder): (Vector3, number)
 	local folder = Instance.new("Folder")
 	folder.Name = "AfkCove"
 	folder.Parent = world
 
-	local center = Vector3.new(170, WORLD_Y, 195)
-	local radius = 17
+	local center = Vector3.new(450, WORLD_Y, 470)
+	local radius = 30
 
 	local disc = Instance.new("Part")
 	disc.Name = "CoveDisc"
@@ -586,7 +643,7 @@ local function buildCove(world: Folder): (Vector3, number)
 end
 
 local function buildSpawnPad(world: Folder): Vector3
-	local pos = Vector3.new(0, 0, 248)
+	local pos = Vector3.new(0, 0, 625)
 	mkPart(world, "SpawnPad", Vector3.new(26, 2, 26),
 		CFrame.new(pos.X, 1, pos.Z), Color3.fromRGB(150, 150, 165),
 		Enum.Material.SmoothPlastic, true)
@@ -617,15 +674,19 @@ function WorldService.Init(): Layout
 		end
 	end
 
-	-- Detect the builder's own ground (baseplate/terrain top) BEFORE building:
-	-- nothing of ours exists yet, so the first hit from above is their surface.
-	-- Our world is then lifted to sit on it instead of assuming y=0.
-	local groundHit = workspace:Raycast(Vector3.new(0, 2000, 0), Vector3.new(0, -4000, 0))
-	if groundHit then
-		WORLD_Y = groundHit.Position.Y + 0.05
-	else
-		WORLD_Y = 0
+	-- Remove the builder's ORIGINAL ground: our world IS the map. Any OG
+	-- grass left behind would fill our river channel and show around (and
+	-- through) our ground, so every ground-plane-like part goes, plus Terrain.
+	for _, d in workspace:GetDescendants() do
+		if d:IsA("BasePart") then
+			local s = d.Size
+			if (s.X > 200 or s.Z > 200) and s.Y < 20 then
+				d:Destroy()
+			end
+		end
 	end
+	workspace.Terrain:Clear()
+	WORLD_Y = 0 -- our ground sits at y=0; nothing to lift onto anymore
 
 	local world = Instance.new("Folder")
 	world.Name = "StealAFishWorld"

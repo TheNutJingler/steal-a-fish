@@ -37,8 +37,8 @@ Config.AquariumUpgrades = table.freeze({
 })
 
 -- Spawning (the "river" conveyor)
-Config.SpawnInterval = 4 -- seconds between fish spawns
-Config.MaxRiverFish = 12 -- cap of unclaimed fish swimming
+Config.SpawnInterval = 5 -- seconds between fish spawns (slower early game)
+Config.MaxRiverFish = 10 -- cap of unclaimed fish swimming
 Config.FishSwimSpeed = 8 -- studs/second along the river path
 Config.PityThreshold = 25 -- every Nth spawn forces at least PityMinRarity
 Config.PityMinRarity = "Epic" -- rarity id floor for pity spawns
@@ -75,10 +75,36 @@ Config.AutosaveInterval = 120 -- seconds between autosaves
 Config.DataStoreName = "StealAFish_PlayerData_v1"
 Config.ProfileTemplateVersion = 1
 
--- World layout (studs)
-Config.MapHalfSize = 200 -- playable half-extent; rock barrier sits beyond this
-Config.RiverHalfWidth = 12 -- river is 24 studs wide
-Config.PlotSize = 44 -- plots are 44x44 single-level platforms
+-- World layout (studs) — mirrors WorldService constants.
+Config.MapHalfSize = 700 -- playable half-extent; rock barrier sits beyond this
+Config.RiverHalfWidth = 15 -- river is 30 studs wide
+Config.PlotSize = 60 -- ground platform is 60x60 inside a 150x150 lot
 Config.PlotsPerBank = 4
+
+-- Land expansion: buyable tycoon-style lot growth. Each tier pushes the
+-- fences out and adds 4 ground slots in the new land (slots 29-40).
+-- Data-driven: add rows for more tiers.
+Config.ExpansionSlotsPerTier = 4
+Config.MaxExpansionTier = 3
+Config.LandExpansions = table.freeze({
+	{
+		Tier = 1,
+		Cost = 10000,
+		LotSize = 210,
+		DisplayName = "Land Grant I",
+	},
+	{
+		Tier = 2,
+		Cost = 60000,
+		LotSize = 270,
+		DisplayName = "Land Grant II",
+	},
+	{
+		Tier = 3,
+		Cost = 250000,
+		LotSize = 330,
+		DisplayName = "Land Grant III",
+	},
+})
 
 return Config

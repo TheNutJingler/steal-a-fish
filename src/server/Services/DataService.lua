@@ -46,6 +46,7 @@ local TEMPLATE: { [string]: any } = {
 	AfkBoost = false,
 	Rebirths = 0,
 	AquariumLevel = 1, -- highest aquarium upgrade owned; 1 = ground floor only
+	ExpansionTier = 0, -- land expansion tier owned; 0 = base 150x150 lot
 	SchemaVersion = 1,
 }
 
