@@ -4,12 +4,15 @@
 	All geometry is procedural so the map lives in git, not in a binary place.
 
 	Layout (studs, Y-up, river runs north→south along X=0):
-	- Rock barrier ring at radius ~215 (20 segments) + invisible collision walls.
-	- Pond built into the north rocks at (0, -150), waterfall feeding the river.
-	- Central river: 24 wide, from z=-140 to z=+165. Fish conveyor path.
-	- 8 plots (4 per bank) at x=±44, z in {-105,-35,35,105}. Ground floor built
-	  here; upper floors via BuildUpperFloor on aquarium upgrade.
-	- AFK cove: sandy disc east of the pond. Neutral spawn pad south of river end.
+	- Rock barrier ring at radius ~275 (20 segments) + invisible collision walls.
+	- Pond built into the north rocks at (0, -230), waterfall feeding the river.
+	- Central river: 30 wide, z=-200 to z=+215, bed+water recessed below grade
+	  in a real channel cut through the ground (grass can't phase through it).
+	- Sand banks run the FULL river length on both sides.
+	- 8 plots (4 per bank) at x=±95, z in {-157,-52,52,157}. Each plot owns a
+	  76x76 fenced lot with the 44x44 platform in the middle: room to expand
+	  on every side. Ground floor built here; upper floors via BuildUpperFloor.
+	- AFK cove: sandy disc south-east at (170, 195). Neutral spawn pad at (0, 248).
 	- At Init, WORLD_Y is detected from the builder's own baseplate/terrain
 	  and the whole world is lifted to sit on it (never buried).
 
@@ -31,6 +34,17 @@ local WorldService = {}
 -- Detected from the builder's own baseplate/terrain so our world sits ON it
 -- instead of assuming y=0 (a taller baseplate would bury every plot).
 local WORLD_Y: number = 0
+
+-- World layout constants (studs, pre-WORLD_Y lift).
+local GROUND_HALF = 280 -- ground extends ±280 in X and Z
+local RIVER_HALF_W = 15 -- water half-width; channel cut through the ground
+local RIVER_Z0 = -200 -- river north end (tucks under the pond's south lip)
+local RIVER_Z1 = 215 -- river south end
+local BANK_W = 12 -- sand bank width on each river side
+local PLOT_X = 95 -- plot center distance from the middle
+local PLOT_LOT = 76 -- fenced lot size: room for the base to expand
+local PLOT_PLATFORM = 44 -- built platform size
+local PLOT_ZS = { -157, -52, 52, 157 }
 
 export type PlotLayout = {
 	Index: number,
@@ -79,15 +93,17 @@ local function mkPart(
 end
 
 local function buildGround(world: Folder)
-	mkPart(
-		world,
-		"Ground",
-		Vector3.new(440, 2, 440),
-		CFrame.new(0, -1, 0),
-		Color3.fromRGB(95, 160, 95),
-		Enum.Material.Grass,
-		true
-	)
+	local grass = Color3.fromRGB(95, 160, 95)
+	-- Two slabs with a channel left open for the river: there is no ground
+	-- under the river, so grass can never phase through the water.
+	for _, side in { -1, 1 } do
+		local w = GROUND_HALF - RIVER_HALF_W
+		local cx = side * (RIVER_HALF_W + w / 2)
+		mkPart(world, if side < 0 then "GroundW" else "GroundE",
+			Vector3.new(w, 2, GROUND_HALF * 2),
+			CFrame.new(cx, -1, 0),
+			grass, Enum.Material.Grass, true)
+	end
 end
 
 local function buildRockBarrier(world: Folder)
@@ -98,7 +114,7 @@ local function buildRockBarrier(world: Folder)
 	local rockColor = Color3.fromRGB(112, 102, 96)
 	local rockDark = Color3.fromRGB(88, 80, 76)
 	local segments = 20
-	local radius = 218
+	local radius = 278
 
 	for i = 0, segments - 1 do
 		local angle = (i / segments) * math.pi * 2
@@ -106,7 +122,7 @@ local function buildRockBarrier(world: Folder)
 		local z = math.sin(angle) * radius
 		-- Deterministic pseudo-variation so the ring doesn't look stamped.
 		local h = 52 + ((i * 37) % 17)
-		local w = 66 + ((i * 53) % 13)
+		local w = 86 + ((i * 53) % 13)
 
 		local seg = mkPart(
 			folder,
@@ -135,7 +151,7 @@ local function buildRockBarrier(world: Folder)
 	local wallFolder = Instance.new("Folder")
 	wallFolder.Name = "InvisibleWalls"
 	wallFolder.Parent = world
-	local ext = 198
+	local ext = 258
 	local wallH = 70
 	mkPart(wallFolder, "WallN", Vector3.new(ext * 2 + 4, wallH, 2),
 		CFrame.new(0, wallH / 2, -ext), Color3.new(1, 1, 1), Enum.Material.SmoothPlastic, true)
@@ -157,7 +173,7 @@ local function buildPondAndWaterfall(world: Folder)
 	folder.Name = "Pond"
 	folder.Parent = world
 
-	local pondCenter = Vector3.new(0, 0, -150)
+	local pondCenter = Vector3.new(0, 0, -230)
 
 	-- Sand bed under the pond (cylinder axis is X; rotate to lie flat).
 	local bed = Instance.new("Part")
@@ -194,17 +210,17 @@ local function buildPondAndWaterfall(world: Folder)
 
 	-- Cliff the waterfall pours over (north edge, against the rocks).
 	mkPart(folder, "FallCliff", Vector3.new(46, 34, 12),
-		CFrame.new(0, 17, -186), Color3.fromRGB(105, 98, 92), Enum.Material.Rock, true)
+		CFrame.new(0, 17, -262), Color3.fromRGB(105, 98, 92), Enum.Material.Rock, true)
 
 	-- The falls: white-blue sheet.
 	local falls = mkPart(folder, "Waterfall", Vector3.new(14, 30, 1.6),
-		CFrame.new(0, 15, -179), Color3.fromRGB(200, 235, 255), Enum.Material.Water, false)
+		CFrame.new(0, 15, -255), Color3.fromRGB(200, 235, 255), Enum.Material.Water, false)
 	falls.Transparency = 0.25
 
 	-- Foam chunks at the base.
 	for i = -1, 1 do
 		local foam = mkPart(folder, `Foam_{i}`, Vector3.new(5, 1.5, 5),
-			CFrame.new(i * 6, 0.8, -170), Color3.fromRGB(240, 250, 255),
+			CFrame.new(i * 6, 0.8, -246), Color3.fromRGB(240, 250, 255),
 			Enum.Material.SmoothPlastic, false)
 		foam.Transparency = 0.3
 	end
@@ -215,29 +231,45 @@ local function buildRiver(world: Folder): { Vector3 }
 	folder.Name = "River"
 	folder.Parent = world
 
-	-- Riverbed.
-	mkPart(folder, "Riverbed", Vector3.new(28, 1, 312),
-		CFrame.new(0, -0.4, 12), Color3.fromRGB(170, 155, 115), Enum.Material.Sand, false)
+	local zLen = RIVER_Z1 - RIVER_Z0
+	local zMid = (RIVER_Z0 + RIVER_Z1) / 2
 
-	-- Water surface.
-	local water = mkPart(folder, "RiverWater", Vector3.new(24, 1, 312),
-		CFrame.new(0, 0.15, 12), Color3.fromRGB(35, 130, 210), Enum.Material.Water, false)
+	-- Riverbed: recessed below grade so the channel reads as dug in.
+	mkPart(folder, "Riverbed", Vector3.new(RIVER_HALF_W * 2 + 4, 1, zLen),
+		CFrame.new(0, -2.5, zMid), Color3.fromRGB(170, 155, 115), Enum.Material.Sand, false)
+
+	-- Water surface: below grass level, so no phasing is possible.
+	local water = mkPart(folder, "RiverWater", Vector3.new(RIVER_HALF_W * 2, 1, zLen),
+		CFrame.new(0, -1, zMid), Color3.fromRGB(35, 130, 210), Enum.Material.Water, false)
 	water.Transparency = 0.12
 
-	-- Sandy banks on both sides.
-	mkPart(folder, "BankW", Vector3.new(10, 0.6, 312),
-		CFrame.new(-17, 0.3, 12), Color3.fromRGB(220, 200, 150), Enum.Material.Sand, true)
-	mkPart(folder, "BankE", Vector3.new(10, 0.6, 312),
-		CFrame.new(17, 0.3, 12), Color3.fromRGB(220, 200, 150), Enum.Material.Sand, true)
+	-- Dirt lining on the channel's cut faces (overlaps the banks slightly so
+	-- no two faces are coplanar: never any z-fighting).
+	for _, side in { -1, 1 } do
+		mkPart(folder, if side < 0 then "ChannelW" else "ChannelE",
+			Vector3.new(1.5, 2, zLen),
+			CFrame.new(side * (RIVER_HALF_W + 0.75), -1, zMid),
+			Color3.fromRGB(134, 96, 67), Enum.Material.Ground, false)
+	end
+
+	-- Sand riverbank running the FULL length of the river on both sides,
+	-- sitting slightly proud of the grass.
+	for _, side in { -1, 1 } do
+		mkPart(folder, if side < 0 then "BankW" else "BankE",
+			Vector3.new(BANK_W, 1.5, zLen),
+			CFrame.new(side * (RIVER_HALF_W + BANK_W / 2), -0.4, zMid),
+			Color3.fromRGB(220, 200, 150), Enum.Material.Sand, true)
+	end
 
 	-- The conveyor path: waterfall base -> gentle S-curve -> south end.
+	-- Fish ride just above the water surface (water top is y=-0.5).
 	return {
-		Vector3.new(0, 1.4 + WORLD_Y, -136),
-		Vector3.new(3, 1.4 + WORLD_Y, -80),
-		Vector3.new(-3, 1.4 + WORLD_Y, -20),
-		Vector3.new(3, 1.4 + WORLD_Y, 40),
-		Vector3.new(-2, 1.4 + WORLD_Y, 100),
-		Vector3.new(0, 1.4 + WORLD_Y, 158),
+		Vector3.new(0, 0.25 + WORLD_Y, RIVER_Z0 + 24),
+		Vector3.new(3, 0.25 + WORLD_Y, -80),
+		Vector3.new(-3, 0.25 + WORLD_Y, -20),
+		Vector3.new(3, 0.25 + WORLD_Y, 40),
+		Vector3.new(-2, 0.25 + WORLD_Y, 100),
+		Vector3.new(0, 0.25 + WORLD_Y, RIVER_Z1 - 20),
 	}
 end
 
@@ -288,26 +320,31 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	local center = Vector3.new(centerX, WORLD_Y, centerZ)
 	local riverDirX = if bank == "East" then -1 else 1 -- direction FROM plot TO river
 
-	-- Main platform (top at y=2).
-	mkPart(folder, "Platform", Vector3.new(44, 2, 44),
+	-- Main platform (top at y=2), centered in the lot.
+	mkPart(folder, "Platform", Vector3.new(PLOT_PLATFORM, 2, PLOT_PLATFORM),
 		CFrame.new(centerX, 1, centerZ), Color3.fromRGB(178, 178, 190), Enum.Material.SmoothPlastic, true)
 	-- Trim slab.
-	mkPart(folder, "Trim", Vector3.new(46, 1, 46),
+	mkPart(folder, "Trim", Vector3.new(PLOT_PLATFORM + 2, 1, PLOT_PLATFORM + 2),
 		CFrame.new(centerX, 0.5, centerZ), Color3.fromRGB(120, 120, 135), Enum.Material.SmoothPlastic, true)
 
-	-- Fences: north + south full, river side open (entrance), back side with gap.
+	-- Fences at the LOT boundary (76x76): the 44x44 platform sits in the
+	-- middle with room to expand on every side. River side stays open
+	-- as the entrance; fences sit on grass (y 0..4).
 	local fenceColor = Color3.fromRGB(140, 105, 72)
+	local halfLot = PLOT_LOT / 2
 	-- North / south fences (along X at z edges).
-	mkPart(folder, "FenceN", Vector3.new(44, 4, 1),
-		CFrame.new(centerX, 4, centerZ - 21.5), fenceColor, Enum.Material.WoodPlanks, true)
-	mkPart(folder, "FenceS", Vector3.new(44, 4, 1),
-		CFrame.new(centerX, 4, centerZ + 21.5), fenceColor, Enum.Material.WoodPlanks, true)
+	mkPart(folder, "FenceN", Vector3.new(PLOT_LOT, 4, 1),
+		CFrame.new(centerX, 2, centerZ - halfLot + 0.5), fenceColor, Enum.Material.WoodPlanks, true)
+	mkPart(folder, "FenceS", Vector3.new(PLOT_LOT, 4, 1),
+		CFrame.new(centerX, 2, centerZ + halfLot - 0.5), fenceColor, Enum.Material.WoodPlanks, true)
 	-- Back fence (away from river) with an 8-stud gap in the middle = land approach.
-	local backX = centerX + (if bank == "East" then 21.5 else -21.5)
-	mkPart(folder, "FenceBackA", Vector3.new(1, 4, 18),
-		CFrame.new(backX, 4, centerZ - 13), fenceColor, Enum.Material.WoodPlanks, true)
-	mkPart(folder, "FenceBackB", Vector3.new(1, 4, 18),
-		CFrame.new(backX, 4, centerZ + 13), fenceColor, Enum.Material.WoodPlanks, true)
+	local backX = centerX + (if bank == "East" then halfLot - 0.5 else -(halfLot - 0.5))
+	local backSegLen = (PLOT_LOT - 8) / 2
+	local backSegOff = 4 + backSegLen / 2
+	mkPart(folder, "FenceBackA", Vector3.new(1, 4, backSegLen),
+		CFrame.new(backX, 2, centerZ - backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
+	mkPart(folder, "FenceBackB", Vector3.new(1, 4, backSegLen),
+		CFrame.new(backX, 2, centerZ + backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
 
 	-- Sign post + board at the river-side corner.
 	local signX = centerX + (if bank == "East" then -19 else 19)
@@ -497,7 +534,7 @@ local function buildCove(world: Folder): (Vector3, number)
 	folder.Name = "AfkCove"
 	folder.Parent = world
 
-	local center = Vector3.new(56, WORLD_Y, -138)
+	local center = Vector3.new(170, WORLD_Y, 195)
 	local radius = 17
 
 	local disc = Instance.new("Part")
@@ -549,7 +586,7 @@ local function buildCove(world: Folder): (Vector3, number)
 end
 
 local function buildSpawnPad(world: Folder): Vector3
-	local pos = Vector3.new(0, 0, 180)
+	local pos = Vector3.new(0, 0, 248)
 	mkPart(world, "SpawnPad", Vector3.new(26, 2, 26),
 		CFrame.new(pos.X, 1, pos.Z), Color3.fromRGB(150, 150, 165),
 		Enum.Material.SmoothPlastic, true)
@@ -601,17 +638,16 @@ function WorldService.Init(): Layout
 	local coveCenter, coveRadius = buildCove(world)
 	buildSpawnPad(world)
 
-	-- Plots: 4 per bank, mirrored z positions.
+	-- Plots: 4 per bank, mirrored z positions, spread out with room to expand.
 	local plots: { [number]: PlotLayout } = {}
-	local plotZs = { -105, -35, 35, 105 }
 	local index = 0
-	for _, z in plotZs do
+	for _, z in PLOT_ZS do
 		index += 1
-		plots[index] = buildPlot(world, index, -44, z, "West")
+		plots[index] = buildPlot(world, index, -PLOT_X, z, "West")
 	end
-	for _, z in plotZs do
+	for _, z in PLOT_ZS do
 		index += 1
-		plots[index] = buildPlot(world, index, 44, z, "East")
+		plots[index] = buildPlot(world, index, PLOT_X, z, "East")
 	end
 
 	print("[WorldService] world built: 8 plots, river, pond, cove")
