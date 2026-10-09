@@ -76,6 +76,14 @@ FishRegistry.VARIANTS = {
 		Weight = 4,
 		GlowColor = Color3.fromRGB(185, 242, 255),
 	},
+	Crystal = {
+		Id = "Crystal",
+		DisplayName = "Crystal",
+		Prefix = "Crystal",
+		IncomeMultiplier = 20,
+		Weight = 3,
+		GlowColor = Color3.fromRGB(230, 250, 255),
+	},
 	Rainbow = {
 		Id = "Rainbow",
 		DisplayName = "Rainbow",
@@ -144,6 +152,27 @@ FishRegistry.SPECIES = {
 		BaseIncome = 300,
 		Weight = 2,
 		Color = Color3.fromRGB(50, 60, 50),
+	},
+	StripedBass = {
+		Id = "StripedBass",
+		DisplayName = "Striped Bass",
+		BaseIncome = 70,
+		Weight = 6,
+		Color = Color3.fromRGB(100, 120, 130),
+	},
+	FlatheadCatfish = {
+		Id = "FlatheadCatfish",
+		DisplayName = "Flathead Catfish",
+		BaseIncome = 150,
+		Weight = 3,
+		Color = Color3.fromRGB(80, 70, 60),
+	},
+	Megalodon = {
+		Id = "Megalodon",
+		DisplayName = "Megalodon",
+		BaseIncome = 1000,
+		Weight = 1,
+		Color = Color3.fromRGB(40, 50, 70),
 	},
 } :: { [SpeciesId]: Species }
 
