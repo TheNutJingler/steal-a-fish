@@ -10,6 +10,8 @@
 	- 8 plots (4 per bank) at x=±44, z in {-105,-35,35,105}. Ground floor built
 	  here; upper floors via BuildUpperFloor on aquarium upgrade.
 	- AFK cove: sandy disc east of the pond. Neutral spawn pad south of river end.
+	- At Init, WORLD_Y is detected from the builder's own baseplate/terrain
+	  and the whole world is lifted to sit on it (never buried).
 
 	Exposes:
 	  WorldService.Init() -> Layout
@@ -24,6 +26,11 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 
 local WorldService = {}
+
+-- Vertical offset (studs) applied to the whole generated world at Init.
+-- Detected from the builder's own baseplate/terrain so our world sits ON it
+-- instead of assuming y=0 (a taller baseplate would bury every plot).
+local WORLD_Y: number = 0
 
 export type PlotLayout = {
 	Index: number,
@@ -225,12 +232,12 @@ local function buildRiver(world: Folder): { Vector3 }
 
 	-- The conveyor path: waterfall base -> gentle S-curve -> south end.
 	return {
-		Vector3.new(0, 1.4, -136),
-		Vector3.new(3, 1.4, -80),
-		Vector3.new(-3, 1.4, -20),
-		Vector3.new(3, 1.4, 40),
-		Vector3.new(-2, 1.4, 100),
-		Vector3.new(0, 1.4, 158),
+		Vector3.new(0, 1.4 + WORLD_Y, -136),
+		Vector3.new(3, 1.4 + WORLD_Y, -80),
+		Vector3.new(-3, 1.4 + WORLD_Y, -20),
+		Vector3.new(3, 1.4 + WORLD_Y, 40),
+		Vector3.new(-2, 1.4 + WORLD_Y, 100),
+		Vector3.new(0, 1.4 + WORLD_Y, 158),
 	}
 end
 
@@ -278,7 +285,7 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	folder.Name = `Plot{index}`
 	folder.Parent = world
 
-	local center = Vector3.new(centerX, 0, centerZ)
+	local center = Vector3.new(centerX, WORLD_Y, centerZ)
 	local riverDirX = if bank == "East" then -1 else 1 -- direction FROM plot TO river
 
 	-- Main platform (top at y=2).
@@ -343,7 +350,7 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	spawn.AllowTeamChangeOnTouch = false
 	spawn.Parent = folder
 
-	local floorTopY = { [1] = 2, [2] = 14, [3] = 26 }
+	local floorTopY = { [1] = 2 + WORLD_Y, [2] = 14 + WORLD_Y, [3] = 26 + WORLD_Y }
 
 	-- Slot anchors for all 28 slots (upper floors' anchors valid once built).
 	local anchors: { [number]: Vector3 } = {}
@@ -490,7 +497,7 @@ local function buildCove(world: Folder): (Vector3, number)
 	folder.Name = "AfkCove"
 	folder.Parent = world
 
-	local center = Vector3.new(56, 0, -138)
+	local center = Vector3.new(56, WORLD_Y, -138)
 	local radius = 17
 
 	local disc = Instance.new("Part")
@@ -564,6 +571,25 @@ local function buildSpawnPad(world: Folder): Vector3
 end
 
 function WorldService.Init(): Layout
+	-- The stock Baseplate template ships a SpawnLocation that would compete
+	-- with our NeutralSpawn (players could spawn in the river). Ours is built
+	-- below, so remove any pre-existing ones first.
+	for _, d in workspace:GetDescendants() do
+		if d:IsA("SpawnLocation") then
+			d:Destroy()
+		end
+	end
+
+	-- Detect the builder's own ground (baseplate/terrain top) BEFORE building:
+	-- nothing of ours exists yet, so the first hit from above is their surface.
+	-- Our world is then lifted to sit on it instead of assuming y=0.
+	local groundHit = workspace:Raycast(Vector3.new(0, 2000, 0), Vector3.new(0, -4000, 0))
+	if groundHit then
+		WORLD_Y = groundHit.Position.Y + 0.05
+	else
+		WORLD_Y = 0
+	end
+
 	local world = Instance.new("Folder")
 	world.Name = "StealAFishWorld"
 	world.Parent = workspace
@@ -589,6 +615,17 @@ function WorldService.Init(): Layout
 	end
 
 	print("[WorldService] world built: 8 plots, river, pond, cove")
+
+	-- Lift every generated part onto the detected ground. (Layout values
+	-- already include WORLD_Y at their construction sites above.)
+	if WORLD_Y ~= 0 then
+		local lift = Vector3.new(0, WORLD_Y, 0)
+		for _, d in world:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.CFrame = d.CFrame + lift
+			end
+		end
+	end
 
 	return {
 		Plots = plots,
