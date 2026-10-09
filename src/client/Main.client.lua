@@ -1,16 +1,25 @@
 --!strict
 --[[
-	Main.client — client entry point. The client is a renderer + input device:
-	it NEVER owns game state. It listens for RemoteEvents and renders UI.
-	STATUS: stub — UI wiring comes with the interface pass.
+	Main.client — client entry point. The client is a renderer + input
+	device: it NEVER owns game state. It listens for RemoteEvents and
+	renders UI.
+
+	Boot order: UiUtil -> CodexController -> HudController -> PlotController.
 ]]
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
-local Shared = ReplicatedStorage:WaitForChild("Shared")
 
--- TODO: require UI controllers, hook RemoteEvents, render HUD.
+local client = script.Parent
+local Controllers = client:WaitForChild("Controllers")
+
+local CodexController = require(Controllers:WaitForChild("CodexController"))
+local HudController = require(Controllers:WaitForChild("HudController"))
+local PlotController = require(Controllers:WaitForChild("PlotController"))
+
+CodexController.Init()
+HudController.Init(CodexController)
+PlotController.Init()
 
 print(`[StealAFish] Client booted for {player.Name}.`)

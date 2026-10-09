@@ -141,12 +141,15 @@ function StealService.TrySteal(player: Player, plotIndex: unknown, slotIndex: un
 	if pi ~= pi or si ~= si then -- NaN
 		return false, "Bad request."
 	end
-	-- 3. State: thief must be free-handed and alive.
+	-- 3. State: thief must be free-handed, alive, and have a live data session.
 	if Carrying[player] then
 		return false, "Already carrying a fish."
 	end
 	if not alive(player) then
 		return false, "You must be alive to steal."
+	end
+	if not DataService.GetProfile(player) then
+		return false, "Data not loaded yet."
 	end
 	-- 4. Target plot: exists, owned by someone else, not locked.
 	local targetPlot = PlotService.GetPlotByIndex(pi)

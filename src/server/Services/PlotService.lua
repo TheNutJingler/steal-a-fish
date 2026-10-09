@@ -99,22 +99,24 @@ function PlotService.IsLocked(plot: PlotRuntime): boolean
 	return os.clock() < plot.LockUntil
 end
 
-local function makePrompt(parent: Instance, actionText: string, holdTime: number, maxDist: number): ProximityPrompt
+local function makePrompt(actionText: string, holdTime: number, maxDist: number): ProximityPrompt
+	-- NOTE: does NOT parent. Callers set attributes/name BEFORE parenting so
+	-- DescendantAdded observers (StealService, PlotController) see the final state.
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = actionText
 	prompt.HoldDuration = holdTime
 	prompt.MaxActivationDistance = maxDist
 	prompt.RequiresLineOfSight = false
-	prompt.Parent = parent
 	return prompt
 end
 
 local function addStealPrompt(plotLayout: any, slotIndex: number)
 	local tank = plotLayout.Folder:WaitForChild(`Tank_{slotIndex}`)
-	local stealPrompt = makePrompt(tank, "Steal Fish", Config.StealChannelTime, Config.StealMaxDistance)
+	local stealPrompt = makePrompt("Steal Fish", Config.StealChannelTime, Config.StealMaxDistance)
 	stealPrompt:SetAttribute("PlotIndex", plotLayout.Index)
 	stealPrompt:SetAttribute("SlotIndex", slotIndex)
 	stealPrompt.Name = "StealPrompt"
+	stealPrompt.Parent = tank
 end
 
 local function broadcastOwners()
@@ -212,6 +214,9 @@ function PlotService.TakeFishFromSlot(plot: PlotRuntime, slotIndex: number): { [
 				break
 			end
 		end
+	end
+	if not taken then
+		return nil -- don't touch the slot; nothing to take
 	end
 	plot.Slots[slotIndex] = nil
 	PlotService.ClearVisual(plot, slotIndex)
@@ -455,20 +460,23 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 			LockPrompt = nil :: any,
 			UpgradePrompt = nil :: any,
 		}
-		-- Prompts live on the sign board.
+		-- Prompts live on the sign board (parented last).
 		local board = plotLayout.Folder:WaitForChild("SignBoard")
-		runtime.ClaimPrompt = makePrompt(board, "Claim Plot", 0.5, 14)
+		runtime.ClaimPrompt = makePrompt("Claim Plot", 0.5, 14)
+		runtime.ClaimPrompt.Parent = board
 		runtime.ClaimPrompt.Triggered:Connect(function(player: Player)
 			local ok, msg = PlotService.ClaimPlot(player, index)
 			if not ok then
 				warn(`[PlotService] claim rejected for {player.Name}: {msg}`)
 			end
 		end)
-		runtime.LockPrompt = makePrompt(board, `Lock Base ({Config.BaseLockDuration}s)`, 0, 14)
+		runtime.LockPrompt = makePrompt(`Lock Base ({Config.BaseLockDuration}s)`, 0, 14)
+		runtime.LockPrompt.Parent = board
 		runtime.LockPrompt.Triggered:Connect(function(player: Player)
 			PlotService.SetLock(player)
 		end)
-		runtime.UpgradePrompt = makePrompt(board, "Upgrade Aquarium", 0, 14)
+		runtime.UpgradePrompt = makePrompt("Upgrade Aquarium", 0, 14)
+		runtime.UpgradePrompt.Parent = board
 		runtime.UpgradePrompt.Triggered:Connect(function(player: Player)
 			PlotService.TryUpgrade(player)
 		end)
