@@ -58,13 +58,11 @@ local function buildGrass(world: Folder)
 	)
 end
 
--- Mountain barrier: invisible solid wall (collision) + jagged mountain
--- visuals on top. Looks like a natural range, but no one gets through.
+-- Mountain barrier: invisible solid wall (collision) + Terrain mountains.
+-- Terrain looks natural; boxes never will.
 local function buildRockBarrier(world: Folder)
 	local rng = Random.new(12345) -- fixed seed: same mountains every server
-	local rockColor = Color3.fromRGB(110, 110, 115)
-	local darkRock = Color3.fromRGB(85, 85, 90)
-	local mossRock = Color3.fromRGB(95, 120, 90)
+	local terrain = workspace.Terrain
 
 	-- INVISIBLE WALL: the real barrier. 50 tall, no gaps.
 	local wallH = 50
@@ -77,16 +75,13 @@ local function buildRockBarrier(world: Folder)
 		{ size = Vector3.new(wallT, wallH, ext * 2), pos = Vector3.new(MAP_HALF, WORLD_Y + wallH / 2, 0) },
 	} do
 		local wall = mkPart(world, "BarrierWall", cfg.size, CFrame.new(cfg.pos),
-			darkRock, Enum.Material.Rock, true)
-		wall.Transparency = 1 -- invisible; mountains below are the visual
+			Color3.fromRGB(85, 85, 90), Enum.Material.Rock, true)
+		wall.Transparency = 1 -- invisible; terrain mountains are the visual
 	end
 
-	-- MOUNTAIN RIDGE: wide overlapping segments forming a SOLID wall.
-	-- Each segment overlaps the next by 30+ studs — no see-through gaps.
-	-- Varying height and tilt so it looks like mountains, not boxes.
-	local function mountainRange(half: number, count: number)
-		local perimeter = half * 8 -- total length around the square
-		local segW = perimeter / count -- width per segment
+	-- TERRAIN MOUNTAINS: overlapping rock spheres forming a solid ridgeline.
+	-- Heavy overlap = no gaps, can't see through.
+	local function terrainRidge(half: number, count: number, minR: number, maxR: number)
 		for i = 1, count do
 			local t = (i - 1) / count * 4
 			local side = math.floor(t)
@@ -101,47 +96,22 @@ local function buildRockBarrier(world: Folder)
 			else
 				x, z = -half, half - f * half * 2
 			end
-
-			-- Wide segment with heavy overlap.
-			local w = segW * 1.8 -- 80% overlap with neighbors
-			local h = rng:NextNumber(45, 75)
-			local d = rng:NextNumber(20, 35)
-			mkPart(world, "Mountain",
-				Vector3.new(w, h, d),
-				CFrame.new(
-					x + rng:NextNumber(-8, 8),
-					WORLD_Y + h / 2 - 5,
-					z + rng:NextNumber(-8, 8))
-					* CFrame.Angles(
-						rng:NextNumber(-0.1, 0.1),
-						rng:NextNumber(-0.3, 0.3),
-						rng:NextNumber(-0.08, 0.08)),
-				if rng:NextNumber() < 0.3 then mossRock
-				elseif rng:NextNumber() < 0.5 then darkRock
-				else rockColor,
-				Enum.Material.Rock, true)
-
-			-- Jagged peak on top for silhouette.
-			local peakW = w * rng:NextNumber(0.3, 0.5)
-			local peakH = rng:NextNumber(15, 30)
-			mkPart(world, "Mountain",
-				Vector3.new(peakW, peakH, d * 0.8),
-				CFrame.new(
-					x + rng:NextNumber(-w * 0.2, w * 0.2),
-					WORLD_Y + h - 5 + peakH / 2,
-					z + rng:NextNumber(-5, 5))
-					* CFrame.Angles(
-						rng:NextNumber(-0.15, 0.15),
-						rng:NextNumber(0, math.pi * 2),
-						rng:NextNumber(-0.15, 0.15)),
-				darkRock, Enum.Material.Rock, true)
+			x += rng:NextNumber(-10, 10)
+			z += rng:NextNumber(-10, 10)
+			local r = rng:NextNumber(minR, maxR)
+			-- Stack: base sphere + peak sphere for height variation.
+			terrain:FillBall(Vector3.new(x, WORLD_Y + r * 0.5, z), r, Enum.Material.Rock)
+			local pr = r * rng:NextNumber(0.5, 0.7)
+			terrain:FillBall(
+				Vector3.new(x + rng:NextNumber(-r * 0.3, r * 0.3), WORLD_Y + r + pr * 0.4, z + rng:NextNumber(-r * 0.3, r * 0.3)),
+				pr, Enum.Material.Rock)
 		end
 	end
 
-	-- Dense overlapping ridge on the wall line.
-	mountainRange(MAP_HALF + 2, 40)
-	-- Backdrop giants further out for depth.
-	mountainRange(MAP_HALF + 100, 20)
+	-- Dense ridge on the wall line.
+	terrainRidge(MAP_HALF + 5, 36, 25, 45)
+	-- Backdrop giants for depth.
+	terrainRidge(MAP_HALF + 120, 20, 40, 70)
 		for i = 1, count do
 			-- Walk the perimeter of the square.
 			local t = (i - 1) / count * 4
