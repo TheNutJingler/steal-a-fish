@@ -40,8 +40,8 @@ Config.AquariumUpgrades = table.freeze({
 Config.SpawnInterval = 5 -- seconds between fish spawns (slower early game)
 Config.MaxRiverFish = 10 -- cap of unclaimed fish swimming
 Config.FishSwimSpeed = 8 -- studs/second along the river path
-Config.PityThreshold = 25 -- every Nth spawn forces at least PityMinRarity
-Config.PityMinRarity = "Epic" -- rarity id floor for pity spawns
+Config.PityThreshold = 60 -- every Nth spawn forces at least PityMinRarity
+Config.PityMinRarity = "Rare" -- rarity id floor for pity spawns
 
 -- Claiming (grabbing fish from the river)
 Config.MaxClaimDistance = 14 -- studs; server re-validates distance on every claim

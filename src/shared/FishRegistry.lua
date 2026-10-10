@@ -140,7 +140,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Starter",
 		Habitat = "Freshwater",
 		BaseIncome = 0.5,
-		Weight = 30,
+		Weight = 32,
 		Color = Color3.fromRGB(90, 140, 90),
 	},
 	LargemouthBass = {
@@ -149,7 +149,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Starter",
 		Habitat = "Freshwater",
 		BaseIncome = 2.5,
-		Weight = 25,
+		Weight = 28,
 		Color = Color3.fromRGB(60, 110, 60),
 	},
 	ChannelCatfish = {
@@ -158,7 +158,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Starter",
 		Habitat = "Freshwater",
 		BaseIncome = 6,
-		Weight = 20,
+		Weight = 22,
 		Color = Color3.fromRGB(70, 70, 80),
 	},
 	-- COMMON
@@ -168,7 +168,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Common",
 		Habitat = "Freshwater",
 		BaseIncome = 12,
-		Weight = 14,
+		Weight = 16,
 		Color = Color3.fromRGB(150, 150, 160),
 	},
 	RainbowTrout = {
@@ -177,7 +177,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Common",
 		Habitat = "Freshwater",
 		BaseIncome = 22,
-		Weight = 10,
+		Weight = 12,
 		Color = Color3.fromRGB(120, 160, 190),
 	},
 	-- UNCOMMON
@@ -187,7 +187,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Uncommon",
 		Habitat = "Freshwater",
 		BaseIncome = 70,
-		Weight = 8,
+		Weight = 5,
 		Color = Color3.fromRGB(130, 100, 60),
 	},
 	SmallmouthBass = {
@@ -196,7 +196,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Uncommon",
 		Habitat = "Freshwater",
 		BaseIncome = 110,
-		Weight = 6,
+		Weight = 4,
 		Color = Color3.fromRGB(110, 95, 60),
 	},
 	-- RARE
@@ -206,7 +206,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Rare",
 		Habitat = "Freshwater",
 		BaseIncome = 160,
-		Weight = 5,
+		Weight = 1.5,
 		Color = Color3.fromRGB(90, 130, 120),
 	},
 	LakeTrout = {
@@ -215,7 +215,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Rare",
 		Habitat = "Freshwater",
 		BaseIncome = 220,
-		Weight = 4,
+		Weight = 1.2,
 		Color = Color3.fromRGB(100, 110, 130),
 	},
 	StripedBass = {
@@ -224,7 +224,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Rare",
 		Habitat = "Freshwater",
 		BaseIncome = 260,
-		Weight = 4,
+		Weight = 1.0,
 		Color = Color3.fromRGB(100, 120, 130),
 	},
 	FlatheadCatfish = {
@@ -233,7 +233,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Rare",
 		Habitat = "Freshwater",
 		BaseIncome = 300,
-		Weight = 3,
+		Weight = 0.8,
 		Color = Color3.fromRGB(80, 70, 60),
 	},
 	-- EPIC: freshwater apex + first taste of the ocean
@@ -243,7 +243,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Epic",
 		Habitat = "Freshwater",
 		BaseIncome = 450,
-		Weight = 2,
+		Weight = 0.4,
 		Color = Color3.fromRGB(50, 60, 50),
 	},
 	BluefinTuna = {
@@ -252,7 +252,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Epic",
 		Habitat = "Ocean",
 		BaseIncome = 700,
-		Weight = 2,
+		Weight = 0.3,
 		Color = Color3.fromRGB(40, 70, 120),
 	},
 	-- LEGENDARY: open ocean
@@ -262,7 +262,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Legendary",
 		Habitat = "Ocean",
 		BaseIncome = 1100,
-		Weight = 1,
+		Weight = 0.15,
 		Color = Color3.fromRGB(50, 80, 140),
 	},
 	BlueMarlin = {
@@ -271,7 +271,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Legendary",
 		Habitat = "Ocean",
 		BaseIncome = 1600,
-		Weight = 1,
+		Weight = 0.12,
 		Color = Color3.fromRGB(30, 60, 130),
 	},
 	-- MYTHIC: open ocean
@@ -281,7 +281,7 @@ FishRegistry.SPECIES = {
 		Rarity = "Mythic",
 		Habitat = "Ocean",
 		BaseIncome = 2500,
-		Weight = 1,
+		Weight = 0.05,
 		Color = Color3.fromRGB(40, 50, 70),
 	},
 } :: { [SpeciesId]: Species }
