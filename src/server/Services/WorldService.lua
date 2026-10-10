@@ -327,9 +327,9 @@ local function slotWorld(plotCenter: Vector3, riverDirX: number, floorTopY: { [n
 	local x = plotCenter.X + riverDirX * -1 * (u - PLOT_PLATFORM / 2)
 	local y: number
 	if floorNum >= 11 then
-		y = WORLD_Y + 3.2 -- expansion tanks sit on grass, not on the platform
+		y = WORLD_Y + 1.2 -- fish hover just above the grass
 	else
-		y = floorTopY[floorNum] + 3.2 -- pedestal top
+		y = floorTopY[floorNum] + 1.2 -- fish hover just above the platform
 	end
 	return Vector3.new(x, y, plotCenter.Z + v)
 end
@@ -470,55 +470,19 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	}
 end
 
--- Pedestal: squat cylinder + glass tank. Fish floats inside the tank.
--- (Cylinder axis is X; rotate Z by 90° to stand upright.)
+-- Slot anchor: invisible marker where a fish displays. (Tanks removed for
+-- the base redesign; the anchor keeps steal prompts + fish placement working.)
 function WorldService._buildPedestal(parent: Instance, anchor: Vector3, slotIndex: number)
-	local base = Instance.new("Part")
-	base.Name = `Pedestal_{slotIndex}`
-	base.Shape = Enum.PartType.Cylinder
-	base.Size = Vector3.new(5.5, 5, 5)
-	base.CFrame = CFrame.new(anchor.X, anchor.Y - 2.75, anchor.Z) * CFrame.Angles(0, 0, math.pi / 2)
-	base.Color = Color3.fromRGB(100, 110, 125)
-	base.Material = Enum.Material.SmoothPlastic
-	base.Anchored = true
-	base.CanCollide = true
-	base.CanTouch = false
-	base.CanQuery = false
-	base.TopSurface = Enum.SurfaceType.Smooth
-	base.BottomSurface = Enum.SurfaceType.Smooth
-	base.Parent = parent
-
-	-- Glass tank.
 	local tank = Instance.new("Part")
 	tank.Name = `Tank_{slotIndex}`
-	tank.Size = Vector3.new(5, 4, 5)
-	tank.CFrame = CFrame.new(anchor.X, anchor.Y + 2, anchor.Z)
-	tank.Color = Color3.fromRGB(180, 220, 255)
-	tank.Transparency = 0.65
-	tank.Material = Enum.Material.Glass
+	tank.Size = Vector3.new(2, 2, 2)
+	tank.CFrame = CFrame.new(anchor)
+	tank.Transparency = 1
 	tank.Anchored = true
 	tank.CanCollide = false
 	tank.CanTouch = false
 	tank.CanQuery = false
-	tank.TopSurface = Enum.SurfaceType.Smooth
-	tank.BottomSurface = Enum.SurfaceType.Smooth
 	tank.Parent = parent
-
-	-- Water inside the tank.
-	local water = Instance.new("Part")
-	water.Name = `TankWater_{slotIndex}`
-	water.Size = Vector3.new(4.4, 3.2, 4.4)
-	water.CFrame = CFrame.new(anchor.X, anchor.Y + 1.8, anchor.Z)
-	water.Color = Color3.fromRGB(40, 130, 210)
-	water.Transparency = 0.35
-	water.Material = Enum.Material.Water
-	water.Anchored = true
-	water.CanCollide = false
-	water.CanTouch = false
-	water.CanQuery = false
-	water.TopSurface = Enum.SurfaceType.Smooth
-	water.BottomSurface = Enum.SurfaceType.Smooth
-	water.Parent = parent
 end
 
 -- Builds an upper floor: platform, pillars, railings, stairs, slot pedestals.
