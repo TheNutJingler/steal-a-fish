@@ -40,6 +40,7 @@ local PlotAssignedRemote = Remotes:WaitForChild("PlotAssigned") :: RemoteEvent
 local PlotOwnerChangedRemote = Remotes:WaitForChild("PlotOwnerChanged") :: RemoteEvent
 local PlotUpgradedRemote = Remotes:WaitForChild("PlotUpgraded") :: RemoteEvent
 local PlotExpandedRemote = Remotes:WaitForChild("PlotExpanded") :: RemoteEvent
+local ExpandResultRemote = Remotes:WaitForChild("ExpandResult") :: RemoteEvent
 local LockChangedRemote = Remotes:WaitForChild("LockChanged") :: RemoteEvent
 local StatsUpdateRemote = Remotes:WaitForChild("StatsUpdate") :: RemoteEvent
 
@@ -58,6 +59,11 @@ local PlotService = {}
 
 local DataService: any = nil
 local WorldService: any = nil
+local BuildService: any = nil
+
+function PlotService.SetBuildService(buildService: any)
+	BuildService = buildService
+end
 
 local Plots: { [number]: PlotRuntime } = {}
 local claimLimiter = RateLimit.new(Config.RateLimit_ClaimPlot.Max, Config.RateLimit_ClaimPlot.Window)
@@ -320,6 +326,9 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): (boolean, str
 	plot.Layout.SpawnLocation.Enabled = true
 	-- Spawn (and respawn) at the claimed base, not a random plot.
 	player.RespawnLocation = plot.Layout.SpawnLocation
+	if BuildService then
+		BuildService.RebuildPlot(player, plot)
+	end
 	-- Respawn at the new plot.
 	task.defer(function()
 		if player:IsDescendantOf(Players) then
@@ -338,6 +347,9 @@ local function freePlot(player: Player)
 			plot.Owner = nil
 			plot.LockUntil = 0
 			plot.Layout.SpawnLocation.Enabled = false
+			if BuildService then
+				BuildService.ClearPlot(plot)
+			end
 			-- Clear slot visuals (fish stay in the profile, slots cleared).
 			for slotIndex in plot.Slots do
 				plot.Slots[slotIndex] = nil
@@ -518,8 +530,7 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 			ClaimPrompt = nil :: any,
 			LockPrompt = nil :: any,
 			UpgradePrompt = nil :: any,
-			ExpandPrompt = nil :: any,
-		}
+			}
 		-- Prompts live on the sign board (parented last).
 		local board = plotLayout.Folder:WaitForChild("SignBoard")
 		runtime.ClaimPrompt = makePrompt("Claim Plot", 0.5, 14)
@@ -539,11 +550,6 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		runtime.UpgradePrompt.Parent = board
 		runtime.UpgradePrompt.Triggered:Connect(function(player: Player)
 			PlotService.TryUpgrade(player)
-		end)
-		runtime.ExpandPrompt = makePrompt("Expand Land", 0, 14)
-		runtime.ExpandPrompt.Parent = board
-		runtime.ExpandPrompt.Triggered:Connect(function(player: Player)
-			PlotService.TryExpand(player)
 		end)
 		-- Steal prompts on every ground-floor pedestal tank (client toggles visibility).
 		-- Upper floors get theirs in TryUpgrade when built.
@@ -567,7 +573,8 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		PlotService.TryUpgrade(player)
 	end)
 	RequestExpandRemote.OnServerEvent:Connect(function(player: Player)
-		PlotService.TryExpand(player)
+		local ok, msg = PlotService.TryExpand(player)
+		ExpandResultRemote:FireClient(player, ok, msg)
 	end)
 
 	-- Auto-claim + restore on player ready.
@@ -608,6 +615,9 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 			addStealPrompt(plot.Layout, slotIndex)
 		end
 		restoreFish(player, plot)
+		if BuildService then
+			BuildService.RebuildPlot(player, plot)
+		end
 		PlotAssignedRemote:FireClient(player, plot.Layout.Index)
 		broadcastOwners()
 		task.defer(function()

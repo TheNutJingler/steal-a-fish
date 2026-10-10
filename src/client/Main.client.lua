@@ -17,9 +17,11 @@ local Controllers = client:WaitForChild("Controllers")
 local CodexController = require(Controllers:WaitForChild("CodexController"))
 local HudController = require(Controllers:WaitForChild("HudController"))
 local PlotController = require(Controllers:WaitForChild("PlotController"))
+local BuildController = require(Controllers:WaitForChild("BuildController"))
 
 CodexController.Init()
 HudController.Init(CodexController)
 PlotController.Init()
+BuildController.Init()
 
 print(`[StealAFish] Client booted for {player.Name}.`)

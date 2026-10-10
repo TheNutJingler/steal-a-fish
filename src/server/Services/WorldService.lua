@@ -385,8 +385,10 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	local riverDirX = if bank == "East" then -1 else 1 -- direction FROM plot TO river
 
 	-- Main platform (top at y=2), centered in the lot.
-	mkPart(folder, "Platform", Vector3.new(PLOT_PLATFORM, 2, PLOT_PLATFORM),
+	-- CanQuery stays ON: the Build tab raycasts against it for tile placement.
+	local platform = mkPart(folder, "Platform", Vector3.new(PLOT_PLATFORM, 2, PLOT_PLATFORM),
 		CFrame.new(centerX, 1, centerZ), Color3.fromRGB(178, 178, 190), Enum.Material.SmoothPlastic, true)
+	platform.CanQuery = true
 	-- Trim slab.
 	mkPart(folder, "Trim", Vector3.new(PLOT_PLATFORM + 2, 1, PLOT_PLATFORM + 2),
 		CFrame.new(centerX, 0.5, centerZ), Color3.fromRGB(120, 120, 135), Enum.Material.SmoothPlastic, true)

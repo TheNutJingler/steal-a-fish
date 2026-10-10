@@ -34,7 +34,6 @@ type PromptSet = {
 	Claim: ProximityPrompt?,
 	Lock: ProximityPrompt?,
 	Upgrade: ProximityPrompt?,
-	Expand: ProximityPrompt?,
 	Steal: { ProximityPrompt },
 }
 local prompts: { [number]: PromptSet } = {}
@@ -61,9 +60,6 @@ local function refreshPlot(plotIndex: number)
 	if set.Upgrade then
 		set.Upgrade.Enabled = isMine
 	end
-	if set.Expand then
-		set.Expand.Enabled = isMine
-	end
 	for _, steal in set.Steal do
 		steal.Enabled = (ownerName ~= nil) and (ownerName ~= myName) and not locked
 	end
@@ -78,7 +74,7 @@ end
 local function ensureSet(plotIndex: number): PromptSet
 	local set = prompts[plotIndex]
 	if not set then
-		set = { Claim = nil, Lock = nil, Upgrade = nil, Expand = nil, Steal = {} }
+		set = { Claim = nil, Lock = nil, Upgrade = nil, Steal = {} }
 		prompts[plotIndex] = set
 	end
 	return set
@@ -109,8 +105,6 @@ local function registerPrompt(prompt: ProximityPrompt)
 		set.Lock = prompt
 	elseif string.find(prompt.ActionText, "Upgrade") then
 		set.Upgrade = prompt
-	elseif string.find(prompt.ActionText, "Expand") then
-		set.Expand = prompt
 	end
 	refreshPlot(plotIndex :: number)
 end
