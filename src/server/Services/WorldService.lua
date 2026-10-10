@@ -79,9 +79,19 @@ local function buildRockBarrier(world: Folder)
 		wall.Transparency = 1 -- invisible; terrain mountains are the visual
 	end
 
-	-- TERRAIN MOUNTAINS: overlapping rock spheres forming a solid ridgeline.
-	-- Heavy overlap = no gaps, can't see through.
+	-- TERRAIN MOUNTAINS: solid base (no gaps) + spheres on top for peaks.
 	local function terrainRidge(half: number, count: number, minR: number, maxR: number)
+		-- SOLID BASE: 4 FillBlock walls forming a continuous rock foundation.
+		-- This guarantees no see-through gaps at ground level.
+		local baseH = 35
+		local baseT = 40
+		local ext = half + 10
+		terrain:FillBlock(CFrame.new(0, WORLD_Y + baseH / 2, -half), Vector3.new(ext * 2, baseH, baseT), Enum.Material.Rock)
+		terrain:FillBlock(CFrame.new(0, WORLD_Y + baseH / 2, half), Vector3.new(ext * 2, baseH, baseT), Enum.Material.Rock)
+		terrain:FillBlock(CFrame.new(-half, WORLD_Y + baseH / 2, 0), Vector3.new(baseT, baseH, ext * 2), Enum.Material.Rock)
+		terrain:FillBlock(CFrame.new(half, WORLD_Y + baseH / 2, 0), Vector3.new(baseT, baseH, ext * 2), Enum.Material.Rock)
+
+		-- PEAKS: dense overlapping spheres on top for a natural ridgeline.
 		for i = 1, count do
 			local t = (i - 1) / count * 4
 			local side = math.floor(t)
@@ -109,9 +119,9 @@ local function buildRockBarrier(world: Folder)
 	end
 
 	-- Dense ridge on the wall line.
-	terrainRidge(MAP_HALF + 5, 36, 25, 45)
+	terrainRidge(MAP_HALF + 5, 70, 35, 55)
 	-- Backdrop giants for depth.
-	terrainRidge(MAP_HALF + 120, 20, 40, 70)
+	terrainRidge(MAP_HALF + 120, 36, 50, 80)
 		for i = 1, count do
 			-- Walk the perimeter of the square.
 			local t = (i - 1) / count * 4
