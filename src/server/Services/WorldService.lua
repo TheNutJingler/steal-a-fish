@@ -65,6 +65,21 @@ local function buildRockBarrier(world: Folder)
 	local rockColor = Color3.fromRGB(110, 110, 115)
 	local darkRock = Color3.fromRGB(85, 85, 90)
 
+	-- SOLID WALL: no gaps, no one leaves. 40 studs tall (can't jump over).
+	-- This is the functional barrier; rocks below are decoration.
+	local wallH = 40
+	local wallT = 12
+	local ext = MAP_HALF + 6 -- slight overlap at corners
+	for _, cfg in {
+		{ size = Vector3.new(ext * 2, wallH, wallT), pos = Vector3.new(0, WORLD_Y + wallH / 2, -MAP_HALF) },
+		{ size = Vector3.new(ext * 2, wallH, wallT), pos = Vector3.new(0, WORLD_Y + wallH / 2, MAP_HALF) },
+		{ size = Vector3.new(wallT, wallH, ext * 2), pos = Vector3.new(-MAP_HALF, WORLD_Y + wallH / 2, 0) },
+		{ size = Vector3.new(wallT, wallH, ext * 2), pos = Vector3.new(MAP_HALF, WORLD_Y + wallH / 2, 0) },
+	} do
+		mkPart(world, "BarrierWall", cfg.size, CFrame.new(cfg.pos),
+			darkRock, Enum.Material.Rock, true)
+	end
+
 	local function rockRing(half: number, count: number, minS: number, maxS: number, yBase: number)
 		for i = 1, count do
 			-- Walk the perimeter of the square.
@@ -99,9 +114,9 @@ local function buildRockBarrier(world: Folder)
 		end
 	end
 
-	-- Inner boulders (playable boundary).
-	rockRing(MAP_HALF + 15, 48, 18, 35, WORLD_Y)
-	-- Outer peaks (backdrop mountains).
+	-- Decorative boulders in front of the wall (inside the play area edge).
+	rockRing(MAP_HALF - 20, 48, 18, 35, WORLD_Y)
+	-- Outer peaks behind the wall (backdrop mountains).
 	rockRing(MAP_HALF + 90, 32, 40, 80, WORLD_Y)
 end
 
