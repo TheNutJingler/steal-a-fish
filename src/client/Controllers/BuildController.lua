@@ -31,6 +31,11 @@ local BuildPlotInfoRemote = Remotes:WaitForChild("BuildPlotInfo") :: RemoteEvent
 local RequestExpandRemote = Remotes:WaitForChild("RequestExpand") :: RemoteEvent
 local ExpandResultRemote = Remotes:WaitForChild("ExpandResult") :: RemoteEvent
 local PlotExpandedRemote = Remotes:WaitForChild("PlotExpanded") :: RemoteEvent
+local RequestUpgradeTankRemote = Remotes:WaitForChild("RequestUpgradeTank") :: RemoteEvent
+local UpgradeTankResultRemote = Remotes:WaitForChild("UpgradeTankResult") :: RemoteEvent
+local TycoonSyncRemote = Remotes:WaitForChild("TycoonSync") :: RemoteEvent
+local RequestRebirthRemote = Remotes:WaitForChild("RequestRebirth") :: RemoteEvent
+local RebirthResultRemote = Remotes:WaitForChild("RebirthResult") :: RemoteEvent
 
 local TILE = 5
 local GRID = 12
@@ -51,6 +56,9 @@ local panel: Frame? = nil
 local panelOpen = false
 local toastLayer: Instance? = nil
 local ownedTiers: { [number]: boolean } = {}
+local tankMaxSlot = 8
+local tankUpgrades: { [string]: number } = {}
+local rebirths = 0
 
 local function toast(text: string, color: Color3?)
 	if toastLayer then
@@ -239,7 +247,7 @@ local function buildPanel(): Frame
 	title.Parent = p
 
 	-- Tabs.
-	local tabs = { "Security", "Decor", "Land" }
+	local tabs = { "Security", "Decor", "Land", "Tanks", "Rebirth" }
 	local tabButtons: { TextButton } = {}
 	local list = Instance.new("ScrollingFrame")
 	list.Size = UDim2.new(0.94, 0, 0.76, 0)
@@ -259,7 +267,35 @@ local function buildPanel(): Frame
 				child:Destroy()
 			end
 		end
-		if cat == "Land" then
+		if cat == "Tanks" then
+			for slot = 1, tankMaxSlot do
+				local level = tankUpgrades[tostring(slot)] or 1
+				local bonusPct = math.floor((1 + 0.25 * (level - 1)) * 100)
+				local maxed = level >= 5
+				local cost = 2500 * (2 ^ (level - 1))
+				makeCard(list,
+					`Tank {slot} — Lv {level} ({bonusPct}% income)`,
+					if maxed then "Max level — this tank earns double."
+					else `Upgrade: +25% fish income. Cost {formatCoins(cost)} coins.`,
+					if maxed then "MAX" else "Upgrade",
+					function()
+						if not maxed then
+							RequestUpgradeTankRemote:FireServer(slot)
+						end
+					end)
+			end
+		elseif cat == "Rebirth" then
+			local mult = (1.5 ^ rebirths)
+			local multText = string.format("%.2fx", mult)
+			local cost = 500000 * (2 ^ rebirths)
+			makeCard(list,
+				`Rebirths: {rebirths} ({multText} income)`,
+				`Cost {formatCoins(cost)} coins. Resets coins, fish and tank upgrades. Keeps your base, buildings, land and codex.`,
+				"REBIRTH",
+				function()
+					RequestRebirthRemote:FireServer()
+				end)
+		elseif cat == "Land" then
 			for _, tier in Config.LandExpansions do
 				local owned = ownedTiers[tier.Tier]
 				makeCard(list,
@@ -287,8 +323,8 @@ local function buildPanel(): Frame
 
 	for i, cat in tabs do
 		local tb = UiUtil.Button(p, cat,
-			UDim2.new(0.03 + (i - 1) * 0.24, 0, 0.145, 0),
-			UDim2.new(0.22, 0, 0.05, 0))
+			UDim2.new(0.03 + (i - 1) * 0.185, 0, 0.145, 0),
+			UDim2.new(0.17, 0, 0.05, 0))
 		tb.AnchorPoint = Vector2.new(0, 0.5)
 		tb.BackgroundColor3 = Color3.fromRGB(45, 60, 80)
 		tb.MouseButton1Click:Connect(function()
@@ -336,6 +372,20 @@ function BuildController.Init()
 
 	PlotExpandedRemote.OnClientEvent:Connect(function(_plotIndex: number, tier: number, _name: string)
 		ownedTiers[tier] = true
+	end)
+
+	TycoonSyncRemote.OnClientEvent:Connect(function(maxSlot: number, upgrades: any, rb: number)
+		tankMaxSlot = maxSlot
+		tankUpgrades = if typeof(upgrades) == "table" then upgrades else {}
+		rebirths = rb
+	end)
+
+	UpgradeTankResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
+		toast(msg, if ok then Color3.fromRGB(140, 255, 140) else Color3.fromRGB(255, 140, 140))
+	end)
+
+	RebirthResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
+		toast(msg, if ok then Color3.fromRGB(255, 220, 100) else Color3.fromRGB(255, 140, 140))
 	end)
 
 	-- Placement input.

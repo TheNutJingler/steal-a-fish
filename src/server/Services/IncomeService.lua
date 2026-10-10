@@ -42,6 +42,7 @@ local function currentRate(player: Player, profile: any): number
 	local base = DataService.GetBaseIncomePerSecond(profile)
 	local mult = profile.Data.IncomeMultiplier or 1
 	mult *= DataService.GetCodexBonus(player)
+	mult *= DataService.RebirthMultiplier(profile)
 	if InCove[player] then
 		mult *= Config.AfkCoveMultiplier
 	end

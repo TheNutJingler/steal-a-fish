@@ -108,3 +108,10 @@ Config.LandExpansions = table.freeze({
 })
 
 return Config
+
+-- Tycoon: tank upgrades + rebirth.
+Config.TankMaxLevel = 5 -- per-tank levels; each level above 1 adds TankBonusPerLevel income
+Config.TankBonusPerLevel = 0.25 -- +25% fish income per level (Lv5 = 2x)
+Config.TankUpgradeBaseCost = 2500 -- level-up cost = base * 2^(level-1)
+Config.RebirthBaseCost = 500000 -- first rebirth cost; doubles each rebirth
+Config.RebirthMultiplier = 1.5 -- income x1.5 per rebirth, stacking

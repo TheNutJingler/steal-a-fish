@@ -41,6 +41,11 @@ local PlotOwnerChangedRemote = Remotes:WaitForChild("PlotOwnerChanged") :: Remot
 local PlotUpgradedRemote = Remotes:WaitForChild("PlotUpgraded") :: RemoteEvent
 local PlotExpandedRemote = Remotes:WaitForChild("PlotExpanded") :: RemoteEvent
 local ExpandResultRemote = Remotes:WaitForChild("ExpandResult") :: RemoteEvent
+local RequestUpgradeTankRemote = Remotes:WaitForChild("RequestUpgradeTank") :: RemoteEvent
+local UpgradeTankResultRemote = Remotes:WaitForChild("UpgradeTankResult") :: RemoteEvent
+local TycoonSyncRemote = Remotes:WaitForChild("TycoonSync") :: RemoteEvent
+local RequestRebirthRemote = Remotes:WaitForChild("RequestRebirth") :: RemoteEvent
+local RebirthResultRemote = Remotes:WaitForChild("RebirthResult") :: RemoteEvent
 local LockChangedRemote = Remotes:WaitForChild("LockChanged") :: RemoteEvent
 local StatsUpdateRemote = Remotes:WaitForChild("StatsUpdate") :: RemoteEvent
 
@@ -69,6 +74,7 @@ local Plots: { [number]: PlotRuntime } = {}
 local claimLimiter = RateLimit.new(Config.RateLimit_ClaimPlot.Max, Config.RateLimit_ClaimPlot.Window)
 local lockLimiter = RateLimit.new(Config.RateLimit_Lock.Max, Config.RateLimit_Lock.Window)
 local upgradeLimiter = RateLimit.new(5, 30)
+local tycoonLimiter = RateLimit.new(20, 30) -- tank upgrades + rebirth
 
 local function totalSlots(): number
 	return Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots
@@ -438,6 +444,96 @@ end
 
 -- Land expansion purchase: pushes the lot fences out and plants 4 new
 -- tank slots in the claimed ring. Tycoon-style plot growth.
+-- Push tank/rebirth state to the client's Build tab.
+function PlotService.SyncTycoon(player: Player)
+	local plot = PlotService.GetPlot(player)
+	local profile = DataService.GetProfile(player)
+	if not plot or not profile then
+		return
+	end
+	TycoonSyncRemote:FireClient(player,
+		PlotService.MaxSlotsFor(plot),
+		profile.Data.TankUpgrades or {},
+		profile.Data.Rebirths or 0)
+end
+
+-- Upgrade one tank's level (1..TankMaxLevel). Bonus: +25% fish income/level.
+function PlotService.UpgradeTank(player: Player, slotIndex: unknown): (boolean, string)
+	if typeof(slotIndex) ~= "number" or slotIndex ~= math.floor(slotIndex) then
+		return false, "Bad tank."
+	end
+	if not tycoonLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "You have no plot."
+	end
+	if slotIndex < 1 or slotIndex > PlotService.MaxSlotsFor(plot) then
+		return false, "No such tank."
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return false, "No data."
+	end
+	if typeof(profile.Data.TankUpgrades) ~= "table" then
+		profile.Data.TankUpgrades = {}
+	end
+	local key = tostring(slotIndex)
+	local level = profile.Data.TankUpgrades[key] or 1
+	if level >= Config.TankMaxLevel then
+		return false, "Tank is max level."
+	end
+	local cost = Config.TankUpgradeBaseCost * (2 ^ (level - 1))
+	if (profile.Data.Coins or 0) < cost then
+		return false, "Not enough coins."
+	end
+	profile.Data.Coins -= cost
+	profile.Data.TankUpgrades[key] = level + 1
+	PlotService.SyncTycoon(player)
+	StatsUpdateRemote:FireClient(player, math.floor(profile.Data.Coins),
+		DataService.GetBaseIncomePerSecond(profile) * DataService.RebirthMultiplier(profile)
+			* DataService.GetCodexBonus(player))
+	print(`[PlotService] {player.Name} upgraded tank {slotIndex} to Lv {level + 1}`)
+	return true, `Tank {slotIndex} -> Lv {level + 1}!`
+end
+
+-- Rebirth: reset coins/fish/tank upgrades for a stacking 1.5x income multiplier.
+-- Keeps the base, buildings, aquarium, land, and codex.
+function PlotService.RequestRebirth(player: Player): (boolean, string)
+	if not tycoonLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "You have no plot."
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return false, "No data."
+	end
+	local cost = DataService.RebirthCost(profile)
+	if (profile.Data.Coins or 0) < cost then
+		return false, `Need {cost} coins to rebirth.`
+	end
+	profile.Data.Coins = 0
+	profile.Data.Fish = {}
+	profile.Data.TankUpgrades = {}
+	profile.Data.Rebirths = (profile.Data.Rebirths or 0) + 1
+	-- Clear the tanks.
+	for slotIndex in plot.Slots do
+		plot.Slots[slotIndex] = nil
+		PlotService.ClearVisual(plot, slotIndex)
+	end
+	PlotService.SyncTycoon(player)
+	StatsUpdateRemote:FireClient(player, 0,
+		DataService.GetBaseIncomePerSecond(profile) * DataService.RebirthMultiplier(profile)
+			* DataService.GetCodexBonus(player))
+	local mult = DataService.RebirthMultiplier(profile)
+	print(`[PlotService] {player.Name} rebirthed (x{mult} income)`)
+	return true, `Reborn! {mult}x income forever.`
+end
+
 function PlotService.TryExpand(player: Player): (boolean, string)
 	if not upgradeLimiter:Check(player.UserId) then
 		return false, "Slow down."
@@ -576,6 +672,14 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		local ok, msg = PlotService.TryExpand(player)
 		ExpandResultRemote:FireClient(player, ok, msg)
 	end)
+	RequestUpgradeTankRemote.OnServerEvent:Connect(function(player: Player, slotIndex: unknown)
+		local ok, msg = PlotService.UpgradeTank(player, slotIndex)
+		UpgradeTankResultRemote:FireClient(player, ok, msg)
+	end)
+	RequestRebirthRemote.OnServerEvent:Connect(function(player: Player)
+		local ok, msg = PlotService.RequestRebirth(player)
+		RebirthResultRemote:FireClient(player, ok, msg)
+	end)
 
 	-- Auto-claim + restore on player ready.
 	DataService.PlayerReady:Connect(function(player: Player, profile: any, _grant: any)
@@ -618,6 +722,7 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		if BuildService then
 			BuildService.RebuildPlot(player, plot)
 		end
+		PlotService.SyncTycoon(player)
 		PlotAssignedRemote:FireClient(player, plot.Layout.Index)
 		broadcastOwners()
 		task.defer(function()

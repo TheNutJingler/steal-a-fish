@@ -79,6 +79,26 @@
     {
       "className": "RemoteEvent",
       "name": "ExpandResult"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "RequestUpgradeTank"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "UpgradeTankResult"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "TycoonSync"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "RequestRebirth"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "RebirthResult"
     }
   ],
   "className": "Folder"
