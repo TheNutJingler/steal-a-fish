@@ -109,6 +109,14 @@ local function buildGround(world: Folder)
 			CFrame.new(cx, -1, 0),
 			grass, Enum.Material.Grass, true)
 	end
+	-- Plugs: close the channel gap north of the river start and south of its
+	-- end, so there's no void trench to fall through at either end.
+	mkPart(world, "GroundPlugN", Vector3.new(34, 2, GROUND_HALF + RIVER_Z0),
+		CFrame.new(0, -1, (-GROUND_HALF + RIVER_Z0) / 2),
+		grass, Enum.Material.Grass, true)
+	mkPart(world, "GroundPlugS", Vector3.new(34, 2, GROUND_HALF - RIVER_Z1),
+		CFrame.new(0, -1, (RIVER_Z1 + GROUND_HALF) / 2),
+		grass, Enum.Material.Grass, true)
 end
 
 local function buildRockBarrier(world: Folder)
@@ -189,7 +197,7 @@ local function buildPondAndWaterfall(world: Folder)
 	bed.Color = Color3.fromRGB(215, 195, 145)
 	bed.Material = Enum.Material.Sand
 	bed.Anchored = true
-	bed.CanCollide = false
+	bed.CanCollide = true -- solid: no falling through the pond into the void
 	bed.CanTouch = false
 	bed.CanQuery = false
 	bed.TopSurface = Enum.SurfaceType.Smooth
@@ -218,8 +226,9 @@ local function buildPondAndWaterfall(world: Folder)
 		CFrame.new(0, 17, -676), Color3.fromRGB(105, 98, 92), Enum.Material.Rock, true)
 
 	-- The falls: white-blue sheet pouring INTO the pond (bottom submerged).
+	-- Solid so players can't walk through it like a ghost.
 	local falls = mkPart(folder, "Waterfall", Vector3.new(14, 34, 1.6),
-		CFrame.new(0, 14, -669), Color3.fromRGB(200, 235, 255), Enum.Material.Water, false)
+		CFrame.new(0, 14, -669), Color3.fromRGB(200, 235, 255), Enum.Material.Water, true)
 	falls.Transparency = 0.25
 
 	-- Foam chunks where the falls land.
@@ -240,8 +249,9 @@ local function buildRiver(world: Folder): { Vector3 }
 	local zMid = (RIVER_Z0 + RIVER_Z1) / 2
 
 	-- Riverbed: recessed below grade so the channel reads as dug in.
+	-- Solid: players wade in the river to grab fish.
 	mkPart(folder, "Riverbed", Vector3.new(RIVER_HALF_W * 2 + 4, 1, zLen),
-		CFrame.new(0, -2.5, zMid), Color3.fromRGB(170, 155, 115), Enum.Material.Sand, false)
+		CFrame.new(0, -2.5, zMid), Color3.fromRGB(170, 155, 115), Enum.Material.Sand, true)
 
 	-- Water surface: below grass level, so no phasing is possible.
 	local water = mkPart(folder, "RiverWater", Vector3.new(RIVER_HALF_W * 2, 1, zLen),
@@ -665,6 +675,13 @@ local function buildSpawnPad(world: Folder): Vector3
 end
 
 function WorldService.Init(): Layout
+	-- Idempotent boot: if a previous world exists (hot-reload, double boot),
+	-- clear it before rebuilding so we never stack or half-rebuild worlds.
+	local oldWorld = workspace:FindFirstChild("StealAFishWorld")
+	if oldWorld then
+		oldWorld:Destroy()
+	end
+
 	-- The stock Baseplate template ships a SpawnLocation that would compete
 	-- with our NeutralSpawn (players could spawn in the river). Ours is built
 	-- below, so remove any pre-existing ones first.
