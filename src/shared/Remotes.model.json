@@ -107,6 +107,14 @@
     {
       "className": "RemoteEvent",
       "name": "BuildAquariumResult"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "RequestPlaceFish"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "PlaceFishResult"
     }
   ],
   "className": "Folder"

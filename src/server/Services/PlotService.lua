@@ -13,8 +13,7 @@
 	  GetPlot(player) -> plot?
 	  GetPlotByIndex(i) -> plot?
 	  MaxSlotsFor(plot) -> number
-	  PlaceFish(player, speciesId, variantId) -> slotIndex?  (back-most free)
-	  TakeFishFromSlot(plot, slotIndex) -> fishData?
+		  TakeFishFromSlot(plot, slotIndex) -> fishData?
 	  ReturnFishToSlot(plot, fishData, preferSlot) -> slotIndex?
 	  IsLocked(plot) -> boolean
 ]]
@@ -42,6 +41,8 @@ local PlotUpgradedRemote = Remotes:WaitForChild("PlotUpgraded") :: RemoteEvent
 local PlotExpandedRemote = Remotes:WaitForChild("PlotExpanded") :: RemoteEvent
 local ExpandResultRemote = Remotes:WaitForChild("ExpandResult") :: RemoteEvent
 local RequestUpgradeTankRemote = Remotes:WaitForChild("RequestUpgradeTank") :: RemoteEvent
+local RequestPlaceFishRemote = Remotes:WaitForChild("RequestPlaceFish") :: RemoteEvent
+local PlaceFishResultRemote = Remotes:WaitForChild("PlaceFishResult") :: RemoteEvent
 local UpgradeTankResultRemote = Remotes:WaitForChild("UpgradeTankResult") :: RemoteEvent
 local TycoonSyncRemote = Remotes:WaitForChild("TycoonSync") :: RemoteEvent
 local RequestRebirthRemote = Remotes:WaitForChild("RequestRebirth") :: RemoteEvent
@@ -65,6 +66,11 @@ local PlotService = {}
 local DataService: any = nil
 local WorldService: any = nil
 local BuildService: any = nil
+local StealServiceRef: any = nil
+
+function PlotService.SetStealService(stealService: any)
+	StealServiceRef = stealService
+end
 
 function PlotService.SetBuildService(buildService: any)
 	BuildService = buildService
@@ -138,6 +144,18 @@ local function addStealPrompt(plotLayout: any, slotIndex: number)
 	stealPrompt:SetAttribute("SlotIndex", slotIndex)
 	stealPrompt.Name = "StealPrompt"
 	stealPrompt.Parent = tank
+	-- Place prompt: set down the fish you're carrying.
+	if not tank:FindFirstChild("PlacePrompt") then
+		local placePrompt = makePrompt("Place Fish", 0, 10)
+		placePrompt:SetAttribute("PlotIndex", plotLayout.Index)
+		placePrompt:SetAttribute("SlotIndex", slotIndex)
+		placePrompt.Name = "PlacePrompt"
+		placePrompt.Triggered:Connect(function(player: Player)
+			local ok, msg = PlotService.PlaceCarriedFish(player, slotIndex)
+			PlaceFishResultRemote:FireClient(player, ok, msg)
+		end)
+		placePrompt.Parent = tank
+	end
 end
 
 local function broadcastOwners()
@@ -166,6 +184,16 @@ local function backMostFreeSlot(plot: PlotRuntime): number?
 	return nil
 end
 
+function PlotService.FreeSlotCount(plot: PlotRuntime): number
+	local n = 0
+	for i = 1, PlotService.MaxSlotsFor(plot) do
+		if plot.Slots[i] == nil then
+			n += 1
+		end
+	end
+	return n
+end
+
 local function placeVisual(plot: PlotRuntime, slotIndex: number, speciesId: string, variantId: string, uid: string)
 	PlotService.ClearVisual(plot, slotIndex)
 	local anchor = plot.Layout.SlotAnchors[slotIndex]
@@ -185,67 +213,6 @@ end
 
 -- Adds a fish to the player's profile AND places it in the back-most free slot.
 -- Returns the slot index, or nil if no free slot.
-function PlotService.PlaceFish(player: Player, speciesId: string, variantId: string): number?
-	local plot = PlotService.GetPlot(player)
-	if not plot then
-		return nil
-	end
-	local profile = DataService.GetProfile(player)
-	if not profile then
-		return nil
-	end
-	local slot = backMostFreeSlot(plot)
-	if not slot then
-		return nil -- plot full
-	end
-	local uid = game:GetService("HttpService"):GenerateGUID(false)
-	table.insert(profile.Data.Fish, {
-		Uid = uid,
-		SpeciesId = speciesId,
-		VariantId = variantId,
-		Slot = slot,
-	})
-	plot.Slots[slot] = uid
-	placeVisual(plot, slot, speciesId, variantId, uid)
-	DataService.RegisterCodexEntry(player, speciesId, variantId)
-	return slot
-end
-
--- Removes whatever fish is in a slot. Returns {Uid, SpeciesId, VariantId}.
-function PlotService.TakeFishFromSlot(plot: PlotRuntime, slotIndex: number): { [string]: any }?
-	local uid = plot.Slots[slotIndex]
-	if not uid then
-		return nil
-	end
-	local owner = plot.Owner
-	if not owner then
-		return nil
-	end
-	local profile = DataService.GetProfile(owner)
-	local taken: { [string]: any}? = nil
-	if profile then
-		for _, fish in profile.Data.Fish do
-			if fish.Uid == uid then
-				taken = {
-					Uid = fish.Uid,
-					SpeciesId = fish.SpeciesId,
-					VariantId = fish.VariantId,
-				}
-				fish.Slot = nil -- in transit; not in any slot
-				break
-			end
-		end
-	end
-	if not taken then
-		return nil -- don't touch the slot; nothing to take
-	end
-	plot.Slots[slotIndex] = nil
-	PlotService.ClearVisual(plot, slotIndex)
-	return taken
-end
-
--- Moves a fish entry from one player's profile to another's (steal banking).
--- The entry lands with Slot=nil; call ReturnFishToSlot to place it.
 function PlotService.MoveFishToPlayer(
 	fishData: { [string]: any },
 	fromPlayer: Player,
@@ -274,6 +241,31 @@ function PlotService.MoveFishToPlayer(
 		Slot = nil,
 	})
 	return true
+end
+
+-- Takes a fish out of a slot (steal): clears the slot + visual, returns the
+-- fish data. The profile record moves to the thief at place time.
+function PlotService.TakeFishFromSlot(plot: PlotRuntime, slotIndex: number): { [string]: any }?
+	local uid = plot.Slots[slotIndex]
+	if not uid then
+		return nil
+	end
+	plot.Slots[slotIndex] = nil
+	PlotService.ClearVisual(plot, slotIndex)
+	local owner = plot.Owner
+	if not owner then
+		return nil
+	end
+	local profile = DataService.GetProfile(owner)
+	if not profile then
+		return nil
+	end
+	for _, fish in profile.Data.Fish do
+		if fish.Uid == uid then
+			return { Uid = fish.Uid, SpeciesId = fish.SpeciesId, VariantId = fish.VariantId }
+		end
+	end
+	return nil
 end
 
 -- Puts a fish (from TakeFishFromSlot) back into a plot: preferred slot if free,
@@ -676,6 +668,10 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 	RequestUpgradeTankRemote.OnServerEvent:Connect(function(player: Player, slotIndex: unknown)
 		local ok, msg = PlotService.UpgradeTank(player, slotIndex)
 		UpgradeTankResultRemote:FireClient(player, ok, msg)
+	end)
+	RequestPlaceFishRemote.OnServerEvent:Connect(function(player: Player, slotIndex: unknown)
+		local ok, msg = PlotService.PlaceCarriedFish(player, slotIndex)
+		PlaceFishResultRemote:FireClient(player, ok, msg)
 	end)
 	RequestRebirthRemote.OnServerEvent:Connect(function(player: Player)
 		local ok, msg = PlotService.RequestRebirth(player)

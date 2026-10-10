@@ -42,6 +42,7 @@ type RiverFish = {
 local FishSpawnerService = {}
 
 local PlotService: any = nil
+local StealServiceRef: any = nil
 
 local RiverFishByUid: { [string]: RiverFish } = {}
 local RiverFishList: { RiverFish } = {}
@@ -170,12 +171,16 @@ local function tryClaimFish(fish: RiverFish, player: Player)
 	end
 
 	fish.Claimed = true -- commit first: no double-claims
-	local slot = PlotService.PlaceFish(player, fish.SpeciesId, fish.VariantId)
-	if not slot then
-		fish.Claimed = false -- release; plot full or no plot
+	if not StealServiceRef then
+		fish.Claimed = false
 		return
 	end
-	print(`[FishSpawner] {player.Name} grabbed {fish.SpeciesId} ({fish.VariantId}) -> slot {slot}`)
+	local ok, _msg = StealServiceRef.PickupFish(player, fish.SpeciesId, fish.VariantId)
+	if not ok then
+		fish.Claimed = false -- release; already carrying / no plot / tanks full
+		return
+	end
+	print(`[FishSpawner] {player.Name} picked up {fish.SpeciesId} ({fish.VariantId})`)
 	despawnFish(fish)
 end
 
@@ -216,8 +221,9 @@ local function spawnFish(parent: Instance)
 	table.insert(RiverFishList, fish)
 end
 
-function FishSpawnerService.Init(worldService: any, plotService: any, _dataService: any, layout: any)
+function FishSpawnerService.Init(worldService: any, plotService: any, _dataService: any, layout: any, stealService: any)
 	PlotService = plotService
+	StealServiceRef = stealService
 
 	buildPathData(layout.RiverPath)
 

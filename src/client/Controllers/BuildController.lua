@@ -38,6 +38,7 @@ local RequestRebirthRemote = Remotes:WaitForChild("RequestRebirth") :: RemoteEve
 local RebirthResultRemote = Remotes:WaitForChild("RebirthResult") :: RemoteEvent
 local RequestBuildAquariumRemote = Remotes:WaitForChild("RequestBuildAquarium") :: RemoteEvent
 local BuildAquariumResultRemote = Remotes:WaitForChild("BuildAquariumResult") :: RemoteEvent
+local PlaceFishResultRemote = Remotes:WaitForChild("PlaceFishResult") :: RemoteEvent
 
 local TILE = 5
 local GRID = 12
@@ -393,6 +394,10 @@ function BuildController.Init()
 	end)
 
 	BuildAquariumResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
+		toast(msg, if ok then Color3.fromRGB(140, 255, 140) else Color3.fromRGB(255, 140, 140))
+	end)
+
+	PlaceFishResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
 		toast(msg, if ok then Color3.fromRGB(140, 255, 140) else Color3.fromRGB(255, 140, 140))
 	end)
 

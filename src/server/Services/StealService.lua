@@ -32,7 +32,9 @@ local CarryChangedRemote = Remotes:WaitForChild("CarryChanged") :: RemoteEvent
 
 type CarryState = {
 	Fish: { [string]: any }, -- {Uid, SpeciesId, VariantId}
-	Victim: Player,
+	Victim: Player?, -- nil for river pickups
+	Source: string, -- "River" | "Steal"
+
 	OriginPlotIndex: number,
 	OriginSlot: number,
 	Visual: Model?,
@@ -45,6 +47,7 @@ local DataService: any = nil
 local PlotService: any = nil
 
 local Carrying: { [Player]: CarryState } = {}
+local lastDeny: { [Player]: number } = {} -- pickup-denial toast cooldown
 local StealCooldowns: { [string]: number } = {} -- [fishUid] = os.clock() when stealable
 local stealLimiter = RateLimit.new(Config.RateLimit_Steal.Max, Config.RateLimit_Steal.Window)
 
@@ -73,6 +76,10 @@ local function notify(player: Player, ok: boolean, message: string)
 	StealResultRemote:FireClient(player, ok, message)
 end
 
+function StealService.GetCarry(player: Player): any
+	return Carrying[player]
+end
+
 -- Resolve a carry: restore speed, destroy the visual, clear state.
 local function clearCarry(player: Player)
 	local carry = Carrying[player]
@@ -92,8 +99,20 @@ local function clearCarry(player: Player)
 	end
 end
 
+function StealService.ClearCarry(player: Player)
+	clearCarry(player)
+end
+
+-- Mark a banked stolen fish as recently stolen (re-steal cooldown).
+function StealService.NoteBanked(uid: string)
+	StealCooldowns[uid] = os.clock() + Config.StealCooldown
+end
+
 -- The fish goes home: victim's origin slot if free, else back-most free.
 local function returnFishToVictim(carry: CarryState, context: string)
+	if carry.Source == "River" or not carry.Victim then
+		return -- wild fish: nothing to return to
+	end
 	local victimPlot = PlotService.GetPlot(carry.Victim)
 	if victimPlot then
 		local slot = PlotService.ReturnFishToSlot(victimPlot, carry.Fish, carry.OriginSlot)
@@ -145,6 +164,10 @@ function StealService.TrySteal(player: Player, plotIndex: unknown, slotIndex: un
 	if Carrying[player] then
 		return false, "Already carrying a fish."
 	end
+	local ownPlot = PlotService.GetPlot(player)
+	if not ownPlot or PlotService.FreeSlotCount(ownPlot) < 1 then
+		return false, "You need a free tank first."
+	end
 	if not alive(player) then
 		return false, "You must be alive to steal."
 	end
@@ -193,6 +216,7 @@ function StealService.TrySteal(player: Player, plotIndex: unknown, slotIndex: un
 	end
 	local visual = attachCarryVisual(player, fish.SpeciesId, fish.VariantId)
 	Carrying[player] = {
+		Source = "Steal",
 		Fish = fish,
 		Victim = targetPlot.Owner,
 		OriginPlotIndex = pi,
@@ -212,49 +236,55 @@ function StealService.TrySteal(player: Player, plotIndex: unknown, slotIndex: un
 	return true, "Fish stolen! Get it home!"
 end
 
--- Bank: carrier reached their own plot -> the fish is theirs.
-local function tryBank(player: Player)
-	local carry = Carrying[player]
-	if not carry then
-		return
+-- Pick up a wild river fish. Carry it to one of your tanks to place it.
+function StealService.PickupFish(player: Player, speciesId: string, variantId: string): (boolean, string)
+	local function deny(msg: string): (boolean, string)
+		-- Cooldown: touches fire repeatedly while wading through the river.
+		if (lastDeny[player] or 0) + 3 < os.clock() then
+			lastDeny[player] = os.clock()
+			notify(player, false, msg)
+		end
+		return false, msg
 	end
-	local ownPlot = PlotService.GetPlot(player)
-	if not ownPlot then
-		return
+	if Carrying[player] then
+		return deny("Already carrying a fish.")
 	end
-	local root = rootOf(player)
-	if not root then
-		return
+	if not alive(player) then
+		return deny("You must be alive.")
 	end
-	if (root.Position - ownPlot.Layout.Center).Magnitude > 26 then
-		return
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return deny("Claim a base first.")
 	end
-	-- Ownership transfers to the thief at bank time.
-	if not PlotService.MoveFishToPlayer(carry.Fish, carry.Victim, player) then
-		returnFishToVictim(carry, "transfer failed")
-		clearCarry(player)
-		CarryChangedRemote:FireClient(player, false, "", "bank failed")
-		return
+	if PlotService.FreeSlotCount(plot) < 1 then
+		return deny("Your tanks are full.")
 	end
-	local slot = PlotService.ReturnFishToSlot(ownPlot, carry.Fish, nil)
-	if not slot then
-		-- Plot full (rare): the fish slips back to the victim.
-		returnFishToVictim(carry, "thief plot full")
-		clearCarry(player)
-		CarryChangedRemote:FireClient(player, false, "", "bank failed")
-		return
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local prevSpeed = humanoid and humanoid.WalkSpeed or 16
+	if humanoid then
+		humanoid.WalkSpeed = Config.CarryWalkSpeed
 	end
-	StealCooldowns[carry.Fish.Uid] = os.clock() + Config.StealCooldown
-	local profile = DataService.GetProfile(player)
-	if profile then
-		DataService.RegisterCodexEntry(player, carry.Fish.SpeciesId, carry.Fish.VariantId)
+	local visual = attachCarryVisual(player, speciesId, variantId)
+	Carrying[player] = {
+		Source = "River",
+		Fish = { SpeciesId = speciesId, VariantId = variantId },
+		Victim = nil,
+		OriginPlotIndex = 0,
+		OriginSlot = 0,
+		Visual = visual,
+		PrevWalkSpeed = prevSpeed,
+	}
+	CarryChangedRemote:FireClient(player, true, speciesId, "carrying")
+	if humanoid then
+		humanoid.Died:Once(function()
+			StealService.ResolveDrop(player, "died")
+		end)
 	end
-	clearCarry(player)
-	CarryChangedRemote:FireClient(player, false, carry.Fish.SpeciesId, "banked")
-	print(`[StealService] {player.Name} banked {carry.Fish.SpeciesId} in slot {slot}`)
+	print(`[StealService] {player.Name} picked up {speciesId} ({variantId})`)
+	return true, "Carrying! Place it in a tank."
 end
 
--- Drop: someone bumped the carrier -> the fish goes home.
 function StealService.ResolveDrop(player: Player, context: string)
 	local carry = Carrying[player]
 	if not carry then
@@ -288,13 +318,7 @@ local function dropCheck()
 	end
 end
 
-local function bankCheck()
-	for carrier in Carrying do
-		if alive(carrier) then
-			tryBank(carrier)
-		end
-	end
-end
+
 
 function StealService.Init(dataService: any, plotService: any, layout: any)
 	DataService = dataService
@@ -339,23 +363,25 @@ function StealService.Init(dataService: any, plotService: any, layout: any)
 			Carrying[player] = nil
 		end
 		for carrier, carry in Carrying do
-			if carry.Victim == player then
-				-- Victim left: thief keeps it — bank it now.
-				tryBank(carrier)
-				if Carrying[carrier] then
-					-- Couldn't bank (no plot?); drop the visual, keep server state clean.
-					clearCarry(carrier)
+			if carry.Victim == player and carry.Source == "Steal" then
+				-- Victim left: the fish is yours now — place it in a tank.
+				local profile = DataService.GetProfile(carrier)
+				if profile then
+					table.insert(profile.Data.Fish, {
+						Uid = carry.Fish.Uid,
+						SpeciesId = carry.Fish.SpeciesId,
+						VariantId = carry.Fish.VariantId,
+						Slot = nil,
+					})
+					DataService.RegisterCodexEntry(carrier, carry.Fish.SpeciesId, carry.Fish.VariantId)
 				end
+				carry.Victim = nil
+				carry.Source = "River" -- no one to return it to
+				CarryChangedRemote:FireClient(carrier, true, carry.Fish.SpeciesId, "carrying")
 			end
 		end
 	end)
 
-	task.spawn(function()
-		while true do
-			task.wait(Config.BankCheckInterval)
-			pcall(bankCheck)
-		end
-	end)
 	task.spawn(function()
 		while true do
 			task.wait(Config.DropCheckInterval)

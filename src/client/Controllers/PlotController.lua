@@ -23,18 +23,22 @@ local Remotes = Shared:WaitForChild("Remotes")
 local PlotAssignedRemote = Remotes:WaitForChild("PlotAssigned") :: RemoteEvent
 local PlotOwnerChangedRemote = Remotes:WaitForChild("PlotOwnerChanged") :: RemoteEvent
 local LockChangedRemote = Remotes:WaitForChild("LockChanged") :: RemoteEvent
+local CarryChangedRemote = Remotes:WaitForChild("CarryChanged") :: RemoteEvent
+local PlaceFishResultRemote = Remotes:WaitForChild("PlaceFishResult") :: RemoteEvent
 
 local PlotController = {}
 
 local owners: { [number]: string? } = {} -- [plotIndex] = owner name or nil
 local lockUntil: { [number]: number } = {} -- [plotIndex] = os.clock() unlock time
 local myPlot: number? = nil
+local carrying = false
 
 type PromptSet = {
 	Claim: ProximityPrompt?,
 	Lock: ProximityPrompt?,
 	Upgrade: ProximityPrompt?,
 	Steal: { ProximityPrompt },
+	Place: { ProximityPrompt },
 }
 local prompts: { [number]: PromptSet } = {}
 
@@ -63,6 +67,9 @@ local function refreshPlot(plotIndex: number)
 	for _, steal in set.Steal do
 		steal.Enabled = (ownerName ~= nil) and (ownerName ~= myName) and not locked
 	end
+	for _, place in set.Place do
+		place.Enabled = isMine and carrying
+	end
 end
 
 local function refreshAll()
@@ -74,7 +81,7 @@ end
 local function ensureSet(plotIndex: number): PromptSet
 	local set = prompts[plotIndex]
 	if not set then
-		set = { Claim = nil, Lock = nil, Upgrade = nil, Steal = {} }
+		set = { Claim = nil, Lock = nil, Upgrade = nil, Steal = {}, Place = {} }
 		prompts[plotIndex] = set
 	end
 	return set
@@ -99,6 +106,8 @@ local function registerPrompt(prompt: ProximityPrompt)
 	local set = ensureSet(plotIndex :: number)
 	if prompt.Name == "StealPrompt" then
 		table.insert(set.Steal, prompt)
+	elseif prompt.Name == "PlacePrompt" then
+		table.insert(set.Place, prompt)
 	elseif string.find(prompt.ActionText, "Claim") then
 		set.Claim = prompt
 	elseif string.find(prompt.ActionText, "Lock") then
@@ -125,6 +134,11 @@ function PlotController.Init()
 
 	PlotAssignedRemote.OnClientEvent:Connect(function(plotIndex: number)
 		myPlot = plotIndex
+		refreshAll()
+	end)
+
+	CarryChangedRemote.OnClientEvent:Connect(function(isCarrying: boolean, _species: string, _ctx: string)
+		carrying = isCarrying
 		refreshAll()
 	end)
 

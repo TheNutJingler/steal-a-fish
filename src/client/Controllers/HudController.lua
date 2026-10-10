@@ -166,7 +166,7 @@ function HudController.Init(codexController: any)
 	CarryChangedRemote.OnClientEvent:Connect(function(isCarrying: boolean, fishName: string, context: string)
 		if isCarrying then
 			if carryBanner then
-				carryBanner.Text = `🐟 Carrying {fishName} — get to your plot!`
+				carryBanner.Text = `🐟 Carrying {fishName} — place it in a tank!`
 			end
 			carryBg.Visible = true
 		else
