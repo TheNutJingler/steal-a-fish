@@ -12,7 +12,7 @@ local Config = {}
 -- Plots (player aquariums) — vertically expanding, theme-park-tycoon style.
 -- Ground floor is always available; upper floors unlock via aquarium upgrades.
 Config.MaxPlots = 8 -- one per player, 8-player server to start (4 per riverbank)
-Config.SlotsPerPlot = 12 -- fish display slots on the ground floor (slots 1-12)
+Config.SlotsPerPlot = 8 -- fish display slots on the ground floor (slots 1-8), one row along the back wall
 Config.Floor2Slots = 8 -- slots 13-20
 Config.Floor3Slots = 8 -- slots 21-28
 Config.MaxFloors = 3

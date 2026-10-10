@@ -11,10 +11,11 @@
 	  in a real channel cut through the ground (grass can't phase through it).
 	- Sand banks run the FULL river length on both sides.
 	- 8 plots (4 per bank) at x=±200, z in {-420,-140,140,420}. Each plot owns
-	  a 150x150 fenced lot with a clean 60x60 platform in the middle (tidy 3x4
-	  tank grid, center walkway, fountain centerpiece) and room to expand.
-	  Upper aquarium floors via BuildUpperFloor; land-expansion tiers via
-	  BuildExpansion (+4 grass slots per tier, fences pushed out).
+	  a 150x150 walled lot (6-tall stone, river side open as the gate):
+	  a clean 60x60 platform in the middle with ONE row of 8 aquarium tanks
+	  along the back wall (max distance from the gate = security), fountain
+	  centerpiece. Upper aquarium floors via BuildUpperFloor (same single row);
+	  land-expansion tiers via BuildExpansion (+4 grass slots per tier).
 	- AFK cove: sandy disc south-east at (450, 470). Neutral spawn pad at (0, 625).
 	- At Init, the builder's ORIGINAL ground is removed (our world IS the map),
 	  so no OG grass can ever show through or fill the river channel.
@@ -294,30 +295,26 @@ local function buildRiver(world: Folder): { Vector3 }
 end
 
 -- Slot anchor math (shared by pedestal building + logic).
--- slotIndex: 1-12 ground (clean 3x4 grid, center walkway), 13-20 floor 2,
--- 21-28 floor 3, 29-40 land-expansion tiers (4 slots each, on the grass).
+-- One row of tanks along the BACK wall (max distance from the river gate):
+-- slots 1-8 ground, 9-16 floor 2, 17-24 floor 3, 25-36 land-expansion tiers.
 local function slotLocal(slotIndex: number): (number, number, number)
 	-- returns (floorNum, u [studs from river edge of platform], v [along river])
 	-- floorNum 11/12/13 = expansion tiers 1/2/3 (tanks sit on grass, not platform)
 	if slotIndex <= Config.SlotsPerPlot then
-		local t = math.floor((slotIndex - 1) / 4) -- row 0..2
-		local p = (slotIndex - 1) % 4 -- col 0..3
-		return 1, 14 + t * 16, -19.5 + p * 13
+		local p = slotIndex - 1 -- col 0..7 along the back wall
+		return 1, 52, -26.25 + p * 7.5
 	elseif slotIndex <= Config.SlotsPerPlot + Config.Floor2Slots then
-		local i = slotIndex - Config.SlotsPerPlot - 1
-		local t = math.floor(i / 4)
-		local p = i % 4
-		return 2, 15 + t * 30, -19.5 + p * 13
+		local p = slotIndex - Config.SlotsPerPlot - 1
+		return 2, 52, -26.25 + p * 7.5
 	elseif slotIndex <= Config.SlotsPerPlot + Config.Floor2Slots + Config.Floor3Slots then
-		local i = slotIndex - Config.SlotsPerPlot - Config.Floor2Slots - 1
-		local t = math.floor(i / 4)
-		local p = i % 4
-		return 3, 15 + t * 30, -19.5 + p * 13
+		local p = slotIndex - Config.SlotsPerPlot - Config.Floor2Slots - 1
+		return 3, 52, -26.25 + p * 7.5
 	else
-		local k = math.floor((slotIndex - 29) / Config.ExpansionSlotsPerTier) + 1 -- tier 1..3
-		local p = (slotIndex - 29) % Config.ExpansionSlotsPerTier -- col 0..3
-		-- Row in the middle of the newly claimed ring, along the back edge.
-		return 10 + k, 90 + (k - 1) * 30, -19.5 + p * 13
+		local k = math.floor((slotIndex - 25) / Config.ExpansionSlotsPerTier) + 1 -- tier 1..3
+		local p = (slotIndex - 25) % Config.ExpansionSlotsPerTier -- col 0..3
+		-- Row just inside the tier's back fence.
+		local lotHalf = 75 + k * 30
+		return 10 + k, lotHalf + 20, -19.5 + p * 13
 	end
 end
 
@@ -327,9 +324,9 @@ local function slotWorld(plotCenter: Vector3, riverDirX: number, floorTopY: { [n
 	local x = plotCenter.X + riverDirX * -1 * (u - PLOT_PLATFORM / 2)
 	local y: number
 	if floorNum >= 11 then
-		y = WORLD_Y + 1.2 -- fish hover just above the grass
+		y = WORLD_Y + 5 -- expansion tanks: fish at tank center above grass
 	else
-		y = floorTopY[floorNum] + 1.2 -- fish hover just above the platform
+		y = floorTopY[floorNum] + 5 -- fish at tank center above the platform
 	end
 	return Vector3.new(x, y, plotCenter.Z + v)
 end
@@ -344,30 +341,39 @@ local function buildStairs(parent: Instance, base: Vector3, dirV: number, width:
 	end
 end
 
--- Fences at the lot boundary. River side stays open as the entrance.
+-- Perimeter walls at the lot boundary (security: solid, 6 tall).
+-- River side stays open as the single entrance (the chokepoint).
 -- Called at build time and again on every land-expansion purchase.
 local function buildFences(folder: Folder, centerX: number, centerZ: number, bank: string, lotSize: number)
-	-- Clear any previous fences (expansion rebuilds).
-	for _, name in { "FenceN", "FenceS", "FenceBackA", "FenceBackB" } do
+	-- Clear any previous walls (expansion rebuilds).
+	for _, name in { "FenceN", "FenceS", "FenceBackA", "FenceBackB", "GatePillarA", "GatePillarB" } do
 		local old = folder:FindFirstChild(name)
 		if old then
 			old:Destroy()
 		end
 	end
+	local wallColor = Color3.fromRGB(125, 125, 135)
 	local halfLot = lotSize / 2
-	-- North / south fences (along X at z edges). Sit on grass (y 0..4).
-	mkPart(folder, "FenceN", Vector3.new(lotSize, 4, 1),
-		CFrame.new(centerX, 2, centerZ - halfLot + 0.5), FENCE_COLOR, Enum.Material.WoodPlanks, true)
-	mkPart(folder, "FenceS", Vector3.new(lotSize, 4, 1),
-		CFrame.new(centerX, 2, centerZ + halfLot - 0.5), FENCE_COLOR, Enum.Material.WoodPlanks, true)
-	-- Back fence (away from river) with an 8-stud gap in the middle = land approach.
-	local backX = centerX + (if bank == "East" then halfLot - 0.5 else -(halfLot - 0.5))
-	local backSegLen = (lotSize - 8) / 2
-	local backSegOff = 4 + backSegLen / 2
-	mkPart(folder, "FenceBackA", Vector3.new(1, 4, backSegLen),
-		CFrame.new(backX, 2, centerZ - backSegOff), FENCE_COLOR, Enum.Material.WoodPlanks, true)
-	mkPart(folder, "FenceBackB", Vector3.new(1, 4, backSegLen),
-		CFrame.new(backX, 2, centerZ + backSegOff), FENCE_COLOR, Enum.Material.WoodPlanks, true)
+	-- North / south walls (along X at z edges). Sit on grass (y 0..6).
+	mkPart(folder, "FenceN", Vector3.new(lotSize, 6, 1.5),
+		CFrame.new(centerX, 3, centerZ - halfLot + 0.75), wallColor, Enum.Material.Concrete, true)
+	mkPart(folder, "FenceS", Vector3.new(lotSize, 6, 1.5),
+		CFrame.new(centerX, 3, centerZ + halfLot - 0.75), wallColor, Enum.Material.Concrete, true)
+	-- Back wall (away from river) with a 10-stud gate gap in the middle = land approach.
+	local backX = centerX + (if bank == "East" then halfLot - 0.75 else -(halfLot - 0.75))
+	local backSegLen = (lotSize - 10) / 2
+	local backSegOff = 5 + backSegLen / 2
+	mkPart(folder, "FenceBackA", Vector3.new(1.5, 6, backSegLen),
+		CFrame.new(backX, 3, centerZ - backSegOff), wallColor, Enum.Material.Concrete, true)
+	mkPart(folder, "FenceBackB", Vector3.new(1.5, 6, backSegLen),
+		CFrame.new(backX, 3, centerZ + backSegOff), wallColor, Enum.Material.Concrete, true)
+	-- Gate pillars flanking the river-side entrance.
+	local gateX = centerX + (if bank == "East" then -(halfLot - 1) else (halfLot - 1))
+	local pillarNames = { "GatePillarA", "GatePillarB" }
+	for i, gz in { centerZ - 12, centerZ + 12 } do
+		mkPart(folder, pillarNames[i], Vector3.new(2, 8, 2),
+			CFrame.new(gateX, 4, gz), Color3.fromRGB(90, 95, 110), Enum.Material.Concrete, true)
+	end
 end
 
 local function buildPlot(world: Folder, index: number, centerX: number, centerZ: number, bank: string): PlotLayout
@@ -470,19 +476,25 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	}
 end
 
--- Slot anchor: invisible marker where a fish displays. (Tanks removed for
--- the base redesign; the anchor keeps steal prompts + fish placement working.)
+-- Slot anchor: a proper aquarium tank on a stand. Tanks line the back wall
+-- in a single row (security: max distance from the river gate).
+-- anchor = fish position = tank center.
 function WorldService._buildPedestal(parent: Instance, anchor: Vector3, slotIndex: number)
-	local tank = Instance.new("Part")
-	tank.Name = `Tank_{slotIndex}`
-	tank.Size = Vector3.new(2, 2, 2)
-	tank.CFrame = CFrame.new(anchor)
-	tank.Transparency = 1
-	tank.Anchored = true
-	tank.CanCollide = false
-	tank.CanTouch = false
-	tank.CanQuery = false
-	tank.Parent = parent
+	local surfaceY = anchor.Y - 5
+	-- Stand.
+	mkPart(parent, `Stand_{slotIndex}`, Vector3.new(6, 3, 6),
+		CFrame.new(anchor.X, surfaceY + 1.5, anchor.Z),
+		Color3.fromRGB(100, 110, 125), Enum.Material.SmoothPlastic, true)
+	-- Glass tank (steal prompts parent here).
+	local tank = mkPart(parent, `Tank_{slotIndex}`, Vector3.new(5, 4, 5),
+		CFrame.new(anchor.X, surfaceY + 5, anchor.Z),
+		Color3.fromRGB(180, 220, 255), Enum.Material.Glass, false)
+	tank.Transparency = 0.65
+	-- Water inside.
+	local water = mkPart(parent, `TankWater_{slotIndex}`, Vector3.new(4.4, 3, 4.4),
+		CFrame.new(anchor.X, surfaceY + 4.8, anchor.Z),
+		Color3.fromRGB(40, 130, 210), Enum.Material.Water, false)
+	water.Transparency = 0.35
 end
 
 -- Builds an upper floor: platform, pillars, railings, stairs, slot pedestals.
