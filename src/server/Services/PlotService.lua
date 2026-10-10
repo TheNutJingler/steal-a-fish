@@ -318,6 +318,8 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): (boolean, str
 	plot.LockUntil = 0
 	refreshSign(plot)
 	plot.Layout.SpawnLocation.Enabled = true
+	-- Spawn (and respawn) at the claimed base, not a random plot.
+	player.RespawnLocation = plot.Layout.SpawnLocation
 	-- Respawn at the new plot.
 	task.defer(function()
 		if player:IsDescendantOf(Players) then
@@ -587,6 +589,7 @@ function PlotService.Init(dataService: any, worldService: any, layout: any)
 		plot.Owner = player
 		refreshSign(plot)
 		plot.Layout.SpawnLocation.Enabled = true
+		player.RespawnLocation = plot.Layout.SpawnLocation
 		if level >= 2 then
 			WorldService.BuildUpperFloor(plot.Layout, 2)
 		end
