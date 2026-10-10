@@ -17,6 +17,7 @@
 ]]
 
 local ServerScriptService = game:GetService("ServerScriptService")
+local Players = game:GetService("Players")
 local server = ServerScriptService:WaitForChild("StealAFish")
 local Services = server:WaitForChild("Services")
 
@@ -30,6 +31,15 @@ local IncomeService = require(Services:WaitForChild("IncomeService"))
 
 DataService.Init()
 local layout = WorldService.Init()
+
+-- Fast walk for world testing (Nathan). Tune later.
+Players.PlayerAdded:Connect(function(player: Player)
+	player.CharacterAdded:Connect(function(char: Model)
+		local humanoid = char:WaitForChild("Humanoid") :: Humanoid
+		humanoid.WalkSpeed = 60
+	end)
+end)
+
 PlotService.Init(DataService, WorldService, layout)
 BuildService.Init(DataService, PlotService)
 PlotService.SetBuildService(BuildService)
