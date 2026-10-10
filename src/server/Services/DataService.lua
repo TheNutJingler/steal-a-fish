@@ -48,6 +48,7 @@ local TEMPLATE: { [string]: any } = {
 	AquariumLevel = 1, -- highest aquarium upgrade owned; 1 = ground floor only
 	ExpansionTier = 0, -- land expansion tier owned; 0 = base 150x150 lot
 	TankUpgrades = {}, -- [tostring(slotIndex)] = level (1-5); +25% income/level
+	Aquariums = {}, -- [tostring(tier)] = true; +20% global income each
 	BuildItems = {}, -- { {Id, TX, TZ, Rot} } buyable base items on the tile grid
 	SchemaVersion = 1,
 }

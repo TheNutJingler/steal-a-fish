@@ -99,6 +99,14 @@
     {
       "className": "RemoteEvent",
       "name": "RebirthResult"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "RequestBuildAquarium"
+    },
+    {
+      "className": "RemoteEvent",
+      "name": "BuildAquariumResult"
     }
   ],
   "className": "Folder"

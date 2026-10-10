@@ -454,7 +454,8 @@ function PlotService.SyncTycoon(player: Player)
 	TycoonSyncRemote:FireClient(player,
 		PlotService.MaxSlotsFor(plot),
 		profile.Data.TankUpgrades or {},
-		profile.Data.Rebirths or 0)
+		profile.Data.Rebirths or 0,
+		profile.Data.Aquariums or {})
 end
 
 -- Upgrade one tank's level (1..TankMaxLevel). Bonus: +25% fish income/level.

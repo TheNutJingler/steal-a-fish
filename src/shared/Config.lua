@@ -115,3 +115,7 @@ Config.TankBonusPerLevel = 0.25 -- +25% fish income per level (Lv5 = 2x)
 Config.TankUpgradeBaseCost = 2500 -- level-up cost = base * 2^(level-1)
 Config.RebirthBaseCost = 500000 -- first rebirth cost; doubles each rebirth
 Config.RebirthMultiplier = 1.5 -- income x1.5 per rebirth, stacking
+
+-- Aquarium: buildable on each land tier. +20% global income each.
+Config.AquariumCost = 40000
+Config.AquariumBonusPer = 0.20

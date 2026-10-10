@@ -36,6 +36,8 @@ local UpgradeTankResultRemote = Remotes:WaitForChild("UpgradeTankResult") :: Rem
 local TycoonSyncRemote = Remotes:WaitForChild("TycoonSync") :: RemoteEvent
 local RequestRebirthRemote = Remotes:WaitForChild("RequestRebirth") :: RemoteEvent
 local RebirthResultRemote = Remotes:WaitForChild("RebirthResult") :: RemoteEvent
+local RequestBuildAquariumRemote = Remotes:WaitForChild("RequestBuildAquarium") :: RemoteEvent
+local BuildAquariumResultRemote = Remotes:WaitForChild("BuildAquariumResult") :: RemoteEvent
 
 local TILE = 5
 local GRID = 12
@@ -59,6 +61,7 @@ local ownedTiers: { [number]: boolean } = {}
 local tankMaxSlot = 8
 local tankUpgrades: { [string]: number } = {}
 local rebirths = 0
+local aquariums: { [string]: boolean } = {}
 
 local function toast(text: string, color: Color3?)
 	if toastLayer then
@@ -374,10 +377,11 @@ function BuildController.Init()
 		ownedTiers[tier] = true
 	end)
 
-	TycoonSyncRemote.OnClientEvent:Connect(function(maxSlot: number, upgrades: any, rb: number)
+	TycoonSyncRemote.OnClientEvent:Connect(function(maxSlot: number, upgrades: any, rb: number, aqs: any)
 		tankMaxSlot = maxSlot
 		tankUpgrades = if typeof(upgrades) == "table" then upgrades else {}
 		rebirths = rb
+		aquariums = if typeof(aqs) == "table" then aqs else {}
 	end)
 
 	UpgradeTankResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
@@ -386,6 +390,10 @@ function BuildController.Init()
 
 	RebirthResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
 		toast(msg, if ok then Color3.fromRGB(255, 220, 100) else Color3.fromRGB(255, 140, 140))
+	end)
+
+	BuildAquariumResultRemote.OnClientEvent:Connect(function(ok: boolean, msg: string)
+		toast(msg, if ok then Color3.fromRGB(140, 255, 140) else Color3.fromRGB(255, 140, 140))
 	end)
 
 	-- Placement input.

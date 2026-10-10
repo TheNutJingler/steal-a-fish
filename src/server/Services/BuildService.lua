@@ -26,6 +26,7 @@ local PhysicsService = game:GetService("PhysicsService")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
 local BuildCatalog = require(Shared:WaitForChild("BuildCatalog"))
 local Remotes = Shared:WaitForChild("Remotes")
 
@@ -36,6 +37,8 @@ local RateLimit = require(Util:WaitForChild("RateLimit"))
 local RequestPlaceItemRemote = Remotes:WaitForChild("RequestPlaceItem") :: RemoteEvent
 local PlaceItemResultRemote = Remotes:WaitForChild("PlaceItemResult") :: RemoteEvent
 local BuildPlotInfoRemote = Remotes:WaitForChild("BuildPlotInfo") :: RemoteEvent
+local RequestBuildAquariumRemote = Remotes:WaitForChild("RequestBuildAquarium") :: RemoteEvent
+local BuildAquariumResultRemote = Remotes:WaitForChild("BuildAquariumResult") :: RemoteEvent
 
 local BuildService = {}
 
@@ -234,6 +237,75 @@ local function buildVisual(plot: any, def: any, tx: number, tz: number, rot: num
 	return itemFolder
 end
 
+-- Aquarium pavilion on a land tier's new ground. Fixed position, off to the
+-- side of the tier's tank row. Decorative trophy shark inside.
+local function buildAquariumVisual(plot: any, tier: number)
+	local L = plot.Layout
+	local folder: Instance = L.Folder:FindFirstChild("Aquariums")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "Aquariums"
+		folder.Parent = L.Folder
+	end
+	-- Position: same row as the tier's tanks (u = lotHalf + 20), offset in v.
+	local lotHalf = 75 + tier * 30
+	local u = lotHalf + 20
+	local wx = L.Center.X + L.RiverDirX * -1 * (u - 30)
+	local wz = L.Center.Z + 55
+	local aq = Instance.new("Folder")
+	aq.Name = `Aquarium_{tier}`
+	aq.Parent = folder
+	-- Base slab.
+	mkPart(aq, "Base", Vector3.new(24, 1, 20), CFrame.new(wx, 0.5, wz),
+		Color3.fromRGB(120, 120, 135), Enum.Material.Concrete, true)
+	-- Corner pillars.
+	for _, sx in { -11, 11 } do
+		for _, sz in { -9, 9 } do
+			mkPart(aq, "Pillar", Vector3.new(1.5, 9, 1.5),
+				CFrame.new(wx + sx, 5.5, wz + sz),
+				Color3.fromRGB(90, 95, 110), Enum.Material.Concrete, true)
+		end
+	end
+	-- Glass walls.
+	local glass = Color3.fromRGB(180, 220, 255)
+	for _, sz in { -9.75, 9.75 } do
+		local wall = mkPart(aq, "Glass", Vector3.new(22, 8, 0.5),
+			CFrame.new(wx, 5, wz + sz), glass, Enum.Material.Glass, true)
+		wall.Transparency = 0.6
+	end
+	for _, sx in { -11.75, 11.75 } do
+		local wall = mkPart(aq, "Glass", Vector3.new(0.5, 8, 18),
+			CFrame.new(wx + sx, 5, wz), glass, Enum.Material.Glass, true)
+		wall.Transparency = 0.6
+	end
+	-- Roof.
+	mkPart(aq, "Roof", Vector3.new(26, 1, 22), CFrame.new(wx, 10, wz),
+		Color3.fromRGB(60, 65, 80), Enum.Material.Concrete, true)
+	-- Central display tank (decorative).
+	local tank = mkPart(aq, "DisplayTank", Vector3.new(10, 6, 8),
+		CFrame.new(wx, 4, wz), glass, Enum.Material.Glass, false)
+	tank.Transparency = 0.6
+	local water = mkPart(aq, "DisplayWater", Vector3.new(9.4, 5, 7.4),
+		CFrame.new(wx, 3.8, wz), Color3.fromRGB(40, 130, 210), Enum.Material.Water, false)
+	water.Transparency = 0.35
+	-- Sign.
+	local sign = mkPart(aq, "Sign", Vector3.new(14, 3, 0.5),
+		CFrame.new(wx, 8, wz - 10.2), Color3.fromRGB(30, 60, 90), Enum.Material.SmoothPlastic, false)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Back -- faces the platform (-z)
+	gui.CanvasSize = Vector2.new(400, 90)
+	gui.Parent = sign
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(150, 220, 255)
+	label.Text = "AQUARIUM"
+	label.Parent = gui
+	print(`[BuildService] Aquarium built on plot {L.Index} tier {tier}`)
+end
+
 function BuildService.PlaceItem(player: Player, itemId: unknown, tx: unknown, tz: unknown, rot: unknown): (boolean, string)
 	if typeof(itemId) ~= "string" then
 		return false, "Bad item."
@@ -293,6 +365,41 @@ function BuildService.PlaceItem(player: Player, itemId: unknown, tx: unknown, tz
 	return true, `{def.Name} placed!`
 end
 
+-- Buy + build an aquarium on an owned land tier. +20% global income each.
+function BuildService.BuildAquarium(player: Player, tier: unknown): (boolean, string)
+	if typeof(tier) ~= "number" or tier ~= math.floor(tier) or tier < 1 or tier > 3 then
+		return false, "Bad tier."
+	end
+	if not placeLimiter:Check(player.UserId) then
+		return false, "Slow down."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "Claim a base first."
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return false, "Data not loaded."
+	end
+	if (profile.Data.ExpansionTier or 0) < tier then
+		return false, "Buy that land first."
+	end
+	if typeof(profile.Data.Aquariums) ~= "table" then
+		profile.Data.Aquariums = {}
+	end
+	if profile.Data.Aquariums[tostring(tier)] then
+		return false, "Aquarium already built."
+	end
+	if (profile.Data.Coins or 0) < Config.AquariumCost then
+		return false, "Not enough coins."
+	end
+	profile.Data.Coins -= Config.AquariumCost
+	profile.Data.Aquariums[tostring(tier)] = true
+	buildAquariumVisual(plot, tier)
+	print(`[BuildService] {player.Name} built aquarium tier {tier}`)
+	return true, `Aquarium built! +{math.floor(Config.AquariumBonusPer * 100)}% income.`
+end
+
 -- Rebuild a player's saved items onto their (freshly claimed) plot.
 function BuildService.RebuildPlot(player: Player, plot: any)
 	BuildService.ClearPlot(plot)
@@ -331,6 +438,21 @@ function BuildService.RebuildPlot(player: Player, plot: any)
 			end
 		end
 	end
+	-- Rebuild aquariums.
+	local profile2 = DataService.GetProfile(player)
+	local aqs = profile2 and profile2.Data.Aquariums
+	if typeof(aqs) == "table" then
+		for tierKey in aqs do
+			local tier = tonumber(tierKey)
+			if tier and tier >= 1 and tier <= 3 then
+				local old = plot.Layout.Folder:FindFirstChild("Aquariums")
+				local exists = old and old:FindFirstChild(`Aquarium_{tier}`)
+				if not exists then
+					buildAquariumVisual(plot, tier)
+				end
+			end
+		end
+	end
 	-- Tell the client the platform rect for placement + owned land tier.
 	local tier = (profile and profile.Data.ExpansionTier) or 0
 	BuildPlotInfoRemote:FireClient(player, plot.Layout.Center.X, plot.Layout.Center.Z, tier)
@@ -342,6 +464,10 @@ function BuildService.ClearPlot(plot: any)
 	local folder = plot.Layout.Folder:FindFirstChild("BuildItems")
 	if folder then
 		folder:Destroy()
+	end
+	local aqs = plot.Layout.Folder:FindFirstChild("Aquariums")
+	if aqs then
+		aqs:Destroy()
 	end
 end
 
@@ -381,6 +507,10 @@ function BuildService.Init(dataService: any, plotService: any)
 	RequestPlaceItemRemote.OnServerEvent:Connect(function(player: Player, itemId: unknown, tx: unknown, tz: unknown, rot: unknown)
 		local ok, msg = BuildService.PlaceItem(player, itemId, tx, tz, rot)
 		PlaceItemResultRemote:FireClient(player, ok, msg)
+	end)
+	RequestBuildAquariumRemote.OnServerEvent:Connect(function(player: Player, tier: unknown)
+		local ok, msg = BuildService.BuildAquarium(player, tier)
+		BuildAquariumResultRemote:FireClient(player, ok, msg)
 	end)
 
 	task.spawn(function()
