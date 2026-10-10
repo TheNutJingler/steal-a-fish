@@ -211,8 +211,62 @@ function PlotService.ClearVisual(plot: PlotRuntime, slotIndex: number)
 	end
 end
 
--- Adds a fish to the player's profile AND places it in the back-most free slot.
--- Returns the slot index, or nil if no free slot.
+-- Place the fish you're carrying into a specific tank.
+function PlotService.PlaceCarriedFish(player: Player, slotIndex: unknown): (boolean, string)
+	if typeof(slotIndex) ~= "number" or slotIndex ~= math.floor(slotIndex) then
+		return false, "Bad tank."
+	end
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, "You have no plot."
+	end
+	if slotIndex < 1 or slotIndex > PlotService.MaxSlotsFor(plot) then
+		return false, "No such tank."
+	end
+	if plot.Slots[slotIndex] ~= nil then
+		return false, "Tank is occupied."
+	end
+	if not StealServiceRef then
+		return false, "Not ready."
+	end
+	local carry = StealServiceRef.GetCarry(player)
+	if not carry then
+		return false, "You're not carrying a fish."
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile then
+		return false, "No data."
+	end
+	if carry.Source == "River" then
+		local uid = game:GetService("HttpService"):GenerateGUID(false)
+		table.insert(profile.Data.Fish, {
+			Uid = uid,
+			SpeciesId = carry.Fish.SpeciesId,
+			VariantId = carry.Fish.VariantId,
+			Slot = slotIndex,
+		})
+		plot.Slots[slotIndex] = uid
+		placeVisual(plot, slotIndex, carry.Fish.SpeciesId, carry.Fish.VariantId, uid)
+		DataService.RegisterCodexEntry(player, carry.Fish.SpeciesId, carry.Fish.VariantId)
+	else
+		if carry.Victim then
+			if not PlotService.MoveFishToPlayer(carry.Fish, carry.Victim, player) then
+				return false, "Transfer failed."
+			end
+		end
+		local placed = PlotService.ReturnFishToSlot(plot, carry.Fish, slotIndex)
+		if not placed then
+			return false, "Couldn't place."
+		end
+		StealServiceRef.NoteBanked(carry.Fish.Uid)
+		DataService.RegisterCodexEntry(player, carry.Fish.SpeciesId, carry.Fish.VariantId)
+	end
+	StealServiceRef.ClearCarry(player)
+	print(`[PlotService] {player.Name} placed {carry.Fish.SpeciesId} in tank {slotIndex}`)
+	return true, "Fish placed!"
+end
+
+-- Moves a fish record from one player's profile to another's (steal).
 function PlotService.MoveFishToPlayer(
 	fishData: { [string]: any },
 	fromPlayer: Player,

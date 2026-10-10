@@ -81,13 +81,42 @@ end
 -- Income/sec from owned fish only (no multipliers — IncomeService layers those).
 function DataService.GetBaseIncomePerSecond(profile: any): number
 	local total = 0
+	local upgrades = profile.Data.TankUpgrades
+	if typeof(upgrades) ~= "table" then
+		upgrades = {}
+	end
 	for _, fish in profile.Data.Fish do
 		local ok, built = pcall(FishRegistry.GetFish, fish.SpeciesId, fish.VariantId)
-		if ok then
-			total += built.IncomePerSecond
+		if ok and built then
+			local level = upgrades[tostring(fish.Slot)] or 1
+			total += built.IncomePerSecond * (1 + Config.TankBonusPerLevel * (level - 1))
 		end
 	end
 	return total
+end
+
+-- Rebirth cost for the NEXT rebirth (doubles each time).
+function DataService.RebirthCost(profile: any): number
+	local rebirths = profile.Data.Rebirths or 0
+	return Config.RebirthBaseCost * (2 ^ rebirths)
+end
+
+-- Rebirth income multiplier (stacks).
+function DataService.RebirthMultiplier(profile: any): number
+	return Config.RebirthMultiplier ^ (profile.Data.Rebirths or 0)
+end
+
+-- Aquarium income bonus (additive).
+function DataService.GetAquariumBonus(profile: any): number
+	local aqs = profile.Data.Aquariums
+	if typeof(aqs) ~= "table" then
+		return 1
+	end
+	local n = 0
+	for _ in aqs do
+		n += 1
+	end
+	return 1 + Config.AquariumBonusPer * n
 end
 
 -- Codex: owning a species × variant registers it. Completing every
