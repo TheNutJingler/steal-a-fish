@@ -81,9 +81,12 @@ local function buildRockBarrier(world: Folder)
 		wall.Transparency = 1 -- invisible; mountains below are the visual
 	end
 
-	-- MOUNTAIN RANGE: overlapping jagged peaks along the wall line.
-	-- Each "peak" is 2-3 stacked rocks, varying height (30-70).
+	-- MOUNTAIN RIDGE: wide overlapping segments forming a SOLID wall.
+	-- Each segment overlaps the next by 30+ studs — no see-through gaps.
+	-- Varying height and tilt so it looks like mountains, not boxes.
 	local function mountainRange(half: number, count: number)
+		local perimeter = half * 8 -- total length around the square
+		local segW = perimeter / count -- width per segment
 		for i = 1, count do
 			local t = (i - 1) / count * 4
 			local side = math.floor(t)
@@ -98,45 +101,47 @@ local function buildRockBarrier(world: Folder)
 			else
 				x, z = -half, half - f * half * 2
 			end
-			x += rng:NextNumber(-12, 12)
-			z += rng:NextNumber(-12, 12)
 
-			-- Base boulder (wide).
-			local baseS = rng:NextNumber(25, 45)
-			local baseH = rng:NextNumber(20, 35)
+			-- Wide segment with heavy overlap.
+			local w = segW * 1.8 -- 80% overlap with neighbors
+			local h = rng:NextNumber(45, 75)
+			local d = rng:NextNumber(20, 35)
 			mkPart(world, "Mountain",
-				Vector3.new(baseS, baseH, baseS * rng:NextNumber(0.7, 1.1)),
-				CFrame.new(x, WORLD_Y + baseH / 2 - 3, z)
+				Vector3.new(w, h, d),
+				CFrame.new(
+					x + rng:NextNumber(-8, 8),
+					WORLD_Y + h / 2 - 5,
+					z + rng:NextNumber(-8, 8))
+					* CFrame.Angles(
+						rng:NextNumber(-0.1, 0.1),
+						rng:NextNumber(-0.3, 0.3),
+						rng:NextNumber(-0.08, 0.08)),
+				if rng:NextNumber() < 0.3 then mossRock
+				elseif rng:NextNumber() < 0.5 then darkRock
+				else rockColor,
+				Enum.Material.Rock, true)
+
+			-- Jagged peak on top for silhouette.
+			local peakW = w * rng:NextNumber(0.3, 0.5)
+			local peakH = rng:NextNumber(15, 30)
+			mkPart(world, "Mountain",
+				Vector3.new(peakW, peakH, d * 0.8),
+				CFrame.new(
+					x + rng:NextNumber(-w * 0.2, w * 0.2),
+					WORLD_Y + h - 5 + peakH / 2,
+					z + rng:NextNumber(-5, 5))
 					* CFrame.Angles(
 						rng:NextNumber(-0.15, 0.15),
 						rng:NextNumber(0, math.pi * 2),
 						rng:NextNumber(-0.15, 0.15)),
-				if rng:NextNumber() < 0.3 then mossRock else rockColor,
-				Enum.Material.Rock, true)
-
-			-- Peak (tall, narrower, stacked on top).
-			local peakS = baseS * rng:NextNumber(0.4, 0.6)
-			local peakH = rng:NextNumber(25, 50)
-			local peakY = WORLD_Y + baseH - 3 + peakH / 2 - 5
-			mkPart(world, "Mountain",
-				Vector3.new(peakS, peakH, peakS * rng:NextNumber(0.7, 1.1)),
-				CFrame.new(
-					x + rng:NextNumber(-8, 8),
-					peakY,
-					z + rng:NextNumber(-8, 8))
-					* CFrame.Angles(
-						rng:NextNumber(-0.2, 0.2),
-						rng:NextNumber(0, math.pi * 2),
-						rng:NextNumber(-0.2, 0.2)),
-				if rng:NextNumber() < 0.5 then darkRock else rockColor,
-				Enum.Material.Rock, true)
+				darkRock, Enum.Material.Rock, true)
 		end
 	end
 
-	-- Dense range right on the wall line (overlapping, no gaps visually).
-	mountainRange(MAP_HALF + 2, 72)
+	-- Dense overlapping ridge on the wall line.
+	mountainRange(MAP_HALF + 2, 40)
 	-- Backdrop giants further out for depth.
-	mountainRange(MAP_HALF + 100, 28)
+	mountainRange(MAP_HALF + 100, 20)
 		for i = 1, count do
 			-- Walk the perimeter of the square.
 			local t = (i - 1) / count * 4
