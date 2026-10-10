@@ -58,29 +58,85 @@ local function buildGrass(world: Folder)
 	)
 end
 
--- Rock/mountain ring around the outside. Two layers for depth:
--- inner boulders + outer peaks. Same style as the last map.
+-- Mountain barrier: invisible solid wall (collision) + jagged mountain
+-- visuals on top. Looks like a natural range, but no one gets through.
 local function buildRockBarrier(world: Folder)
 	local rng = Random.new(12345) -- fixed seed: same mountains every server
 	local rockColor = Color3.fromRGB(110, 110, 115)
 	local darkRock = Color3.fromRGB(85, 85, 90)
+	local mossRock = Color3.fromRGB(95, 120, 90)
 
-	-- SOLID WALL: no gaps, no one leaves. 40 studs tall (can't jump over).
-	-- This is the functional barrier; rocks below are decoration.
-	local wallH = 40
-	local wallT = 12
-	local ext = MAP_HALF + 6 -- slight overlap at corners
+	-- INVISIBLE WALL: the real barrier. 50 tall, no gaps.
+	local wallH = 50
+	local wallT = 8
+	local ext = MAP_HALF + 4
 	for _, cfg in {
 		{ size = Vector3.new(ext * 2, wallH, wallT), pos = Vector3.new(0, WORLD_Y + wallH / 2, -MAP_HALF) },
 		{ size = Vector3.new(ext * 2, wallH, wallT), pos = Vector3.new(0, WORLD_Y + wallH / 2, MAP_HALF) },
 		{ size = Vector3.new(wallT, wallH, ext * 2), pos = Vector3.new(-MAP_HALF, WORLD_Y + wallH / 2, 0) },
 		{ size = Vector3.new(wallT, wallH, ext * 2), pos = Vector3.new(MAP_HALF, WORLD_Y + wallH / 2, 0) },
 	} do
-		mkPart(world, "BarrierWall", cfg.size, CFrame.new(cfg.pos),
+		local wall = mkPart(world, "BarrierWall", cfg.size, CFrame.new(cfg.pos),
 			darkRock, Enum.Material.Rock, true)
+		wall.Transparency = 1 -- invisible; mountains below are the visual
 	end
 
-	local function rockRing(half: number, count: number, minS: number, maxS: number, yBase: number)
+	-- MOUNTAIN RANGE: overlapping jagged peaks along the wall line.
+	-- Each "peak" is 2-3 stacked rocks, varying height (30-70).
+	local function mountainRange(half: number, count: number)
+		for i = 1, count do
+			local t = (i - 1) / count * 4
+			local side = math.floor(t)
+			local f = t - side
+			local x, z: number
+			if side == 0 then
+				x, z = -half + f * half * 2, -half
+			elseif side == 1 then
+				x, z = half, -half + f * half * 2
+			elseif side == 2 then
+				x, z = half - f * half * 2, half
+			else
+				x, z = -half, half - f * half * 2
+			end
+			x += rng:NextNumber(-12, 12)
+			z += rng:NextNumber(-12, 12)
+
+			-- Base boulder (wide).
+			local baseS = rng:NextNumber(25, 45)
+			local baseH = rng:NextNumber(20, 35)
+			mkPart(world, "Mountain",
+				Vector3.new(baseS, baseH, baseS * rng:NextNumber(0.7, 1.1)),
+				CFrame.new(x, WORLD_Y + baseH / 2 - 3, z)
+					* CFrame.Angles(
+						rng:NextNumber(-0.15, 0.15),
+						rng:NextNumber(0, math.pi * 2),
+						rng:NextNumber(-0.15, 0.15)),
+				if rng:NextNumber() < 0.3 then mossRock else rockColor,
+				Enum.Material.Rock, true)
+
+			-- Peak (tall, narrower, stacked on top).
+			local peakS = baseS * rng:NextNumber(0.4, 0.6)
+			local peakH = rng:NextNumber(25, 50)
+			local peakY = WORLD_Y + baseH - 3 + peakH / 2 - 5
+			mkPart(world, "Mountain",
+				Vector3.new(peakS, peakH, peakS * rng:NextNumber(0.7, 1.1)),
+				CFrame.new(
+					x + rng:NextNumber(-8, 8),
+					peakY,
+					z + rng:NextNumber(-8, 8))
+					* CFrame.Angles(
+						rng:NextNumber(-0.2, 0.2),
+						rng:NextNumber(0, math.pi * 2),
+						rng:NextNumber(-0.2, 0.2)),
+				if rng:NextNumber() < 0.5 then darkRock else rockColor,
+				Enum.Material.Rock, true)
+		end
+	end
+
+	-- Dense range right on the wall line (overlapping, no gaps visually).
+	mountainRange(MAP_HALF + 2, 72)
+	-- Backdrop giants further out for depth.
+	mountainRange(MAP_HALF + 100, 28)
 		for i = 1, count do
 			-- Walk the perimeter of the square.
 			local t = (i - 1) / count * 4
@@ -113,12 +169,6 @@ local function buildRockBarrier(world: Folder)
 			)
 		end
 	end
-
-	-- Decorative boulders in front of the wall (inside the play area edge).
-	rockRing(MAP_HALF - 20, 48, 18, 35, WORLD_Y)
-	-- Outer peaks behind the wall (backdrop mountains).
-	rockRing(MAP_HALF + 90, 32, 40, 80, WORLD_Y)
-end
 
 function WorldService.Init(): Layout
 	-- Idempotent: clear any previous world (hot-reload safety).
