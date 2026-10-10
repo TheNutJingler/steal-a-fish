@@ -4,12 +4,16 @@
 	and boots them. Services live in src/server/Services/.
 
 	Boot order:
-	  1. DataService (profiles, sessions, offline earnings)
-	  2. WorldService (builds the map, returns the layout)
-	  3. PlotService (claims, slots, locks, upgrades)
-	  4. FishSpawnerService (river conveyor)
-	  5. StealService (steal validation, carry, bank, drop)
-	  6. IncomeService (1s tick, leaderstats, AFK cove)
+	  1. DataService (profiles, sessions)
+	  2. WorldService (builds the map, returns layout)
+	  3. PlotService (claims, slots, tycoon)
+	  4. BuildService (placement, gates)
+	  5. StealService (steal validation, carry)
+	  6. FishSpawnerService (river conveyor)
+	  7. IncomeService (money tick)
+
+	Dependencies are wired via Set* methods after Init, so services never
+	require each other at module scope (no circular requires).
 ]]
 
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -19,10 +23,10 @@ local Services = server:WaitForChild("Services")
 local DataService = require(Services:WaitForChild("DataService"))
 local WorldService = require(Services:WaitForChild("WorldService"))
 local PlotService = require(Services:WaitForChild("PlotService"))
-local FishSpawnerService = require(Services:WaitForChild("FishSpawnerService"))
-local StealService = require(Services:WaitForChild("StealService"))
-local IncomeService = require(Services:WaitForChild("IncomeService"))
 local BuildService = require(Services:WaitForChild("BuildService"))
+local StealService = require(Services:WaitForChild("StealService"))
+local FishSpawnerService = require(Services:WaitForChild("FishSpawnerService"))
+local IncomeService = require(Services:WaitForChild("IncomeService"))
 
 DataService.Init()
 local layout = WorldService.Init()

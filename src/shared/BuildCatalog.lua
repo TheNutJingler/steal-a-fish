@@ -1,78 +1,51 @@
 --!strict
 --[[
-	BuildCatalog — buyable base items for the Build tab.
-	SizeTiles = {w, d} footprint in grid tiles (5 studs each).
-	Rotation swaps w/d. Prices in coins.
-]]
+	BuildCatalog — buildable items.
 
-export type BuildItemDef = {
-	Id: string,
-	Name: string,
-	Category: string, -- "Security" | "Decor"
-	Price: number,
-	SizeTiles: { number },
-	Description: string,
-}
+	Adding an item = adding a row. The server validates price, size, and
+	placement; the client reads this for the build tab UI.
+
+	Fields:
+	- Id: unique string key
+	- Name: display name
+	- Price: coin cost
+	- SizeTiles: {w, d} footprint in grid tiles
+	- Category: "Security" | "Decor" | "Land"
+	- Description: tooltip text
+
+	Step 10 will fill this in.
+]]
 
 local BuildCatalog = {}
 
-BuildCatalog.ITEMS = {
-	{
-		Id = "SecurityGate",
-		Name = "Security Gate",
-		Category = "Security",
-		Price = 15000,
-		SizeTiles = { 2, 1 },
-		Description = "Steal-a-Brainrot style laser gate. Seals shut for everyone but you while your base is locked.",
-	},
-	{
-		Id = "Wall",
-		Name = "Wall",
-		Category = "Security",
-		Price = 750,
-		SizeTiles = { 1, 1 },
-		Description = "Sturdy wall segment. Build mazes, vaults and chokepoints.",
-	},
-	{
-		Id = "Stairs",
-		Name = "Stairs",
-		Category = "Decor",
-		Price = 300,
-		SizeTiles = { 1, 1 },
-		Description = "A solid step. Stack them to reach new heights.",
-	},
-	{
-		Id = "PathTile",
-		Name = "Path Tile",
-		Category = "Decor",
-		Price = 150,
-		SizeTiles = { 1, 1 },
-		Description = "Decorative floor tile. Pave your base in style.",
-	},
-	{
-		Id = "LampPost",
-		Name = "Lamp Post",
-		Category = "Decor",
-		Price = 500,
-		SizeTiles = { 1, 1 },
-		Description = "Lights up your base. Pure style.",
-	},
+export type ItemDef = {
+	Id: string,
+	Name: string,
+	Price: number,
+	SizeTiles: { number },
+	Category: string,
+	Description: string,
 }
 
-local byId: { [string]: BuildItemDef } = {}
-for _, item in BuildCatalog.ITEMS do
-	byId[item.Id] = item
+local ITEMS: { [string]: ItemDef } = {}
+
+function BuildCatalog.Get(itemId: string): ItemDef?
+	return ITEMS[itemId]
 end
 
-function BuildCatalog.Get(id: string): BuildItemDef?
-	return byId[id]
+function BuildCatalog.All(): { ItemDef }
+	local out = {}
+	for _, def in ITEMS do
+		table.insert(out, def)
+	end
+	return out
 end
 
-function BuildCatalog.ByCategory(cat: string): { BuildItemDef }
-	local out: { BuildItemDef } = {}
-	for _, item in BuildCatalog.ITEMS do
-		if item.Category == cat then
-			table.insert(out, item)
+function BuildCatalog.ByCategory(category: string): { ItemDef }
+	local out = {}
+	for _, def in ITEMS do
+		if def.Category == category then
+			table.insert(out, def)
 		end
 	end
 	return out

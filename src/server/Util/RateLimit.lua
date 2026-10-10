@@ -1,54 +1,49 @@
 --!strict
 --[[
-	RateLimit — per-player sliding-window rate limiter (server-side only).
-	From the coding study §4.5. Derive thresholds from legitimate max usage
-	times headroom. Policy: silent reject; the caller decides escalation.
+	RateLimit — per-player action throttling.
+
+	Usage:
+		local limiter = RateLimit.new(maxRequests, windowSeconds)
+		if not limiter:Check(player.UserId) then
+			return false, "Slow down."
+		end
 ]]
 
 local RateLimit = {}
 RateLimit.__index = RateLimit
 
-export type RateLimit = typeof(setmetatable(
-	{} :: {
-		max: number,
-		window: number,
-		hits: { [number]: { number } },
-	},
-	RateLimit
-))
+export type Limiter = {
+	Check: (self: Limiter, key: number | string) -> boolean,
+}
 
-function RateLimit.new(maxCalls: number, windowSec: number): RateLimit
+function RateLimit.new(max: number, window: number): Limiter
 	return setmetatable({
-		max = maxCalls,
-		window = windowSec,
-		hits = {},
-	} :: {
-		max: number,
-		window: number,
-		hits: { [number]: { number } },
+		_max = max,
+		_window = window,
+		_hits = {} :: { [number | string]: { number } },
 	}, RateLimit)
 end
 
-function RateLimit.Check(self: RateLimit, userId: number): boolean
+function RateLimit:Check(key: number | string): boolean
 	local now = os.clock()
-	local fresh: { number } = {}
-	local prior: { number } = self.hits[userId] or {}
-	for _, t in prior do
-		if now - t < self.window then
+	local hits = self._hits[key]
+	if not hits then
+		hits = {}
+		self._hits[key] = hits
+	end
+	-- Drop expired.
+	local fresh = {}
+	for _, t in hits do
+		if now - t < self._window then
 			table.insert(fresh, t)
 		end
 	end
-	if #fresh >= self.max then
-		self.hits[userId] = fresh
+	self._hits[key] = fresh
+	if #fresh >= self._max then
 		return false
 	end
 	table.insert(fresh, now)
-	self.hits[userId] = fresh
 	return true
-end
-
-function RateLimit.Forget(self: RateLimit, userId: number)
-	self.hits[userId] = nil
 end
 
 return RateLimit
