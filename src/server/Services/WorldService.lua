@@ -49,6 +49,11 @@ local PLOT_LOT = 150 -- base fenced lot size; expansions grow it per Config
 local PLOT_PLATFORM = 60 -- ground platform size (clean 3x4 tank grid)
 local PLOT_ZS = { -420, -140, 140, 420 }
 
+-- Shared wood color for fences, sign posts, and railings. Module scope:
+-- buildFences and buildPlot both use it (a local trapped inside one
+-- function once silently nil'ed the other's SignPost and killed the boot).
+local FENCE_COLOR = Color3.fromRGB(140, 105, 72)
+
 export type PlotLayout = {
 	Index: number,
 	Center: Vector3,
@@ -349,21 +354,20 @@ local function buildFences(folder: Folder, centerX: number, centerZ: number, ban
 			old:Destroy()
 		end
 	end
-	local fenceColor = Color3.fromRGB(140, 105, 72)
 	local halfLot = lotSize / 2
 	-- North / south fences (along X at z edges). Sit on grass (y 0..4).
 	mkPart(folder, "FenceN", Vector3.new(lotSize, 4, 1),
-		CFrame.new(centerX, 2, centerZ - halfLot + 0.5), fenceColor, Enum.Material.WoodPlanks, true)
+		CFrame.new(centerX, 2, centerZ - halfLot + 0.5), FENCE_COLOR, Enum.Material.WoodPlanks, true)
 	mkPart(folder, "FenceS", Vector3.new(lotSize, 4, 1),
-		CFrame.new(centerX, 2, centerZ + halfLot - 0.5), fenceColor, Enum.Material.WoodPlanks, true)
+		CFrame.new(centerX, 2, centerZ + halfLot - 0.5), FENCE_COLOR, Enum.Material.WoodPlanks, true)
 	-- Back fence (away from river) with an 8-stud gap in the middle = land approach.
 	local backX = centerX + (if bank == "East" then halfLot - 0.5 else -(halfLot - 0.5))
 	local backSegLen = (lotSize - 8) / 2
 	local backSegOff = 4 + backSegLen / 2
 	mkPart(folder, "FenceBackA", Vector3.new(1, 4, backSegLen),
-		CFrame.new(backX, 2, centerZ - backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
+		CFrame.new(backX, 2, centerZ - backSegOff), FENCE_COLOR, Enum.Material.WoodPlanks, true)
 	mkPart(folder, "FenceBackB", Vector3.new(1, 4, backSegLen),
-		CFrame.new(backX, 2, centerZ + backSegOff), fenceColor, Enum.Material.WoodPlanks, true)
+		CFrame.new(backX, 2, centerZ + backSegOff), FENCE_COLOR, Enum.Material.WoodPlanks, true)
 end
 
 local function buildPlot(world: Folder, index: number, centerX: number, centerZ: number, bank: string): PlotLayout
@@ -398,7 +402,7 @@ local function buildPlot(world: Folder, index: number, centerX: number, centerZ:
 	-- Sign post + board at the river-side corner.
 	local signX = centerX + (if bank == "East" then -19 else 19)
 	mkPart(folder, "SignPost", Vector3.new(1.5, 7, 1.5),
-		CFrame.new(signX, 5.5, centerZ - 18), fenceColor, Enum.Material.WoodPlanks, true)
+		CFrame.new(signX, 5.5, centerZ - 18), FENCE_COLOR, Enum.Material.WoodPlanks, true)
 	local board = mkPart(folder, "SignBoard", Vector3.new(12, 5, 1),
 		CFrame.new(signX, 10, centerZ - 18), Color3.fromRGB(90, 65, 45), Enum.Material.WoodPlanks, true)
 	-- Face the board toward the river.
