@@ -18,7 +18,7 @@ export type Layout = {
 }
 
 local MAP_HALF = 700
-local WORLD_Y = 0 -- top of the grass
+local WORLD_Y = 0.2 -- top of the grass; sits just above the baseplate (y=0) to avoid z-fighting
 
 local function mkPart(
 	parent: Instance,
